@@ -1,0 +1,174 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dünya Haritası - Dinamik Zoom ve Seçim</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 flex flex-col items-center justify-center h-screen p-4 space-y-4">
+  <div class="overflow-auto border-4 border-yellow-400 rounded-xl shadow-xl max-w-full max-h-full">
+    <canvas id="mapCanvas" width="2000" height="1000" class="block border border-yellow-500 rounded-xl shadow-lg"></canvas>
+  </div>
+
+  <button id="saveBtn" class="px-6 py-2 bg-yellow-500 rounded text-black font-semibold hover:bg-yellow-400 transition mt-4">
+    Seçimleri Kaydet
+  </button>
+
+  <script>
+    const canvas = document.getElementById('mapCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const img = new Image();
+    img.src = "{% static 'app/map.png' %}";
+
+    const cols = 2000;  // Haritanın sütun sayısı (piksel olarak)
+    const rows = 1000;  // Haritanın satır sayısı (piksel olarak)
+
+    const cellWidth = canvas.width / cols;
+    const cellHeight = canvas.height / rows;
+
+    // Seçilen hücreler burada saklanacak (örnek: "x,y" stringi)
+    const selectedCells = new Set();
+
+    img.onload = () => {
+      redraw();
+    };
+
+    // Haritayı çiz (seçim işaretleriyle birlikte)
+    function redraw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+
+      // Seçilen hücreleri çiz
+      ctx.fillStyle = "rgba(255, 215, 0, 0.6)";
+      selectedCells.forEach(key => {
+        const [c, r] = key.split(',').map(Number);
+        ctx.fillRect(c * cellWidth, r * cellHeight, cellWidth, cellHeight);
+      });
+    }
+
+    // Fare hareketinde yapılacaklar:
+    canvas.addEventListener('mousemove', (e) => {
+      redraw(); // Önce büyük resmi ve seçimleri çiz
+
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Zoom alanını çizmek için parametreler
+      const zoomAreaSize = 40;  // kaynakta kaç piksel alıyoruz
+      const zoomScale = 4;      // zoom katsayısı
+
+      // Zoomlu alanı çizmek için kaynak başlangıç koordinatları
+      let sx = mouseX - zoomAreaSize/2;
+      let sy = mouseY - zoomAreaSize/2;
+
+      // Taşma kontrolü
+      if(sx < 0) sx = 0;
+      if(sy < 0) sy = 0;
+      if(sx + zoomAreaSize > canvas.width) sx = canvas.width - zoomAreaSize;
+      if(sy + zoomAreaSize > canvas.height) sy = canvas.height - zoomAreaSize;
+
+      // Zoomlu alanın ana canvas üzerindeki hedef koordinatları (fare imlecinin sağında ve üstünde)
+      let dx = mouseX + 20;
+      let dy = mouseY - zoomAreaSize * zoomScale - 20;
+
+      // Eğer üstte taşarsa altta göster
+      if (dy < 0) dy = mouseY + 20;
+
+      // Küçük zoom kutusunu çiz (çerçeve)
+      ctx.strokeStyle = 'orange';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(dx, dy, zoomAreaSize * zoomScale, zoomAreaSize * zoomScale);
+
+      // Zoomlu alanı çiz (net pikseller için smoothing kapalı)
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(
+        canvas,      // Kaynak olarak kendi canvas'ımız
+        sx, sy,      // Kaynak başlangıç noktası
+        zoomAreaSize, zoomAreaSize,  // Kaynak genişlik/yükseklik
+        dx, dy,     // Hedef başlangıç noktası
+        zoomAreaSize * zoomScale, zoomAreaSize * zoomScale // Hedef genişlik/yükseklik
+      );
+    });
+
+    // Fare tıklamasında seçim yap
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+
+      // Tıklanan hücreyi bul
+      const col = Math.floor(clickX / cellWidth);
+      const row = Math.floor(clickY / cellHeight);
+
+      // Pixel ortası koordinatı
+      const pixelX = Math.floor(col * cellWidth + cellWidth / 2);
+      const pixelY = Math.floor(row * cellHeight + cellHeight / 2);
+
+      // Piksel rengini kontrol et (örnek: açık alan mı)
+      ctx.drawImage(img, 0, 0);
+      const pixelData = ctx.getImageData(pixelX, pixelY, 1, 1).data;
+      const r = pixelData[0];
+      const g = pixelData[1];
+      const b = pixelData[2];
+
+      if (r >= 200 && g >= 200 && b >= 200) {
+        const key = `${col},${row}`;
+        if (selectedCells.has(key)) {
+          selectedCells.delete(key);
+        } else {
+          selectedCells.add(key);
+        }
+        redraw();
+        console.log('Seçili kutucuklar:', Array.from(selectedCells));
+      } else {
+        console.log(`Denizde ya da seçilemeyen yerde tıklandı → Sütun: ${col}, Satır: ${row}`);
+      }
+    });
+
+    // CSRF token alma fonksiyonu
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+          cookie = cookie.trim();
+          if (cookie.startsWith(name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+
+    // Seçimleri kaydet (API çağrısı)
+    function saveSelectedCells() {
+      fetch('/api/save-cells/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken'),
+        },
+        body: JSON.stringify({ cells: Array.from(selectedCells) })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if(data.status === 'success'){
+          alert(data.saved + " kutucuk başarıyla kaydedildi.");
+        } else {
+          alert("Hata: " + data.message);
+        }
+      })
+      .catch(err => {
+        alert("Sunucuya bağlanırken hata oluştu.");
+        console.error(err);
+      });
+    }
+
+    document.getElementById('saveBtn').addEventListener('click', saveSelectedCells);
+  </script>
+</body>
+</html>
