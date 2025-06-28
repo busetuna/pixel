@@ -3,132 +3,409 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Dünya Haritası - Dinamik Zoom ve Seçim</title>
+  <title>3D ve 2D Harita Entegrasyonu</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/three"></script>
+  <script src="https://unpkg.com/globe.gl"></script>
 </head>
-<body class="bg-gray-900 flex flex-col items-center justify-center h-screen p-4 space-y-4">
-  <div class="overflow-auto border-4 border-yellow-400 rounded-xl shadow-xl max-w-full max-h-full">
-    <canvas id="mapCanvas" width="2000" height="1000" class="block border border-yellow-500 rounded-xl shadow-lg"></canvas>
+<body class="bg-gray-900 flex flex-col items-center justify-center min-h-screen p-4 space-y-6">
+
+  <!-- 3D GLOBE -->
+  <div id="globeViz" class="w-full max-w-5xl h-[400px] border-4 border-pink-400 rounded-xl shadow-xl"></div>
+
+  <!-- Koordinat Bilgisi -->
+  <div id="coordInfo" class="text-white text-center">
+    <p>3D globe'da bir noktaya tıklayın</p>
   </div>
+
+  <!-- 2D HARİTA -->
+  <canvas id="mapCanvas" width="2000" height="1000" class="block border-4 border-yellow-400 rounded-xl shadow-xl"></canvas>
 
   <button id="saveBtn" class="px-6 py-2 bg-yellow-500 rounded text-black font-semibold hover:bg-yellow-400 transition mt-4">
     Seçimleri Kaydet
   </button>
+  
+  <div class="flex gap-4 mt-4">
+    <button id="clearBtn" class="px-4 py-2 bg-red-500 rounded text-white font-semibold hover:bg-red-400 transition">
+      Seçimleri Temizle
+    </button>
+    <button id="selectVisibleBtn" class="px-4 py-2 bg-green-500 rounded text-white font-semibold hover:bg-green-400 transition">
+      Görünen Alandaki Karaları Seç
+    </button>
+  </div>
 
   <script>
+    // 🌍 GLOBE GL BAŞLAT
+    const globe = Globe()(document.getElementById('globeViz'))
+      .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+      .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+      .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
+      .width(document.getElementById('globeViz').offsetWidth)
+      .height(400);
+
+    // Globe'da tıklama olayını yakalama
+    globe.onGlobeClick((coords, event) => {
+      if (coords) {
+        const lat = coords.lat;
+        const lng = coords.lng;
+        console.log("Tıklanan Koordinat:", lat, lng);
+        
+        // Koordinat bilgisini göster
+        document.getElementById('coordInfo').innerHTML = 
+          `<p>Seçilen Konum: <span class="text-yellow-400">Enlem: ${lat.toFixed(4)}, Boylam: ${lng.toFixed(4)}</span></p>`;
+        
+        // 2D haritada zoom göster
+        showLatLngOnMap(lat, lng);
+      }
+    });
+
+    // 🗺️ 2D CANVAS İŞLEMLERİ
     const canvas = document.getElementById('mapCanvas');
     const ctx = canvas.getContext('2d');
-
     const img = new Image();
-    img.src = "{% static 'app/map.png' %}";
-
-    const cols = 2000;  // Haritanın sütun sayısı (piksel olarak)
-    const rows = 1000;  // Haritanın satır sayısı (piksel olarak)
-
+    img.src = "{% static 'app/map.png' %}"; // Sizin PNG haritanız
+    
+    const cols = 2000;
+    const rows = 1000;
     const cellWidth = canvas.width / cols;
     const cellHeight = canvas.height / rows;
-
-    // Seçilen hücreler burada saklanacak (örnek: "x,y" stringi)
     const selectedCells = new Set();
 
+    // Harita yüklendiğinde ilk çizimi yap
     img.onload = () => {
       redraw();
     };
 
-    // Haritayı çiz (seçim işaretleriyle birlikte)
+    // redraw fonksiyonu yukarıda yeniden tanımlandı
+
+    // ✨ 2D haritada fareyle kutucuk seçme (Grid tabanlı)
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const clickY = (e.clientY - rect.top) * (canvas.height / rect.height);
+      
+      // Hangi grid hücresine tıklandığını bul
+      const col = Math.floor(clickX / cellWidth);
+      const row = Math.floor(clickY / cellHeight);
+      
+      // Sınırları kontrol et
+      if (col < 0 || col >= cols || row < 0 || row >= rows) {
+        return;
+      }
+      
+      // Hücrenin merkez pikselini al
+      const pixelX = Math.floor(col * cellWidth + cellWidth / 2);
+      const pixelY = Math.floor(row * cellHeight + cellHeight / 2);
+      
+      // Geçici canvas oluştur pixel rengini kontrol etmek için
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      tempCtx.drawImage(img, 0, 0);
+      
+      // Pixel rengini al
+      const pixelData = tempCtx.getImageData(pixelX, pixelY, 1, 1).data;
+      const r = pixelData[0];
+      const g = pixelData[1];
+      const b = pixelData[2];
+      
+      console.log(`Grid Hücresi [${col},${row}] - RGB: (${r},${g},${b})`);
+      
+      // Sadece kara alanları seçilebilir yap (deniz/açık renkler hariç)
+      // Beyaz ve açık mavi tonlarını deniz olarak kabul et
+      const isLand = !(
+        (r >= 200 && g >= 200 && b >= 200) || // Beyaz alanlar (buzul/kar)
+        (r < 100 && g < 150 && b > 150) ||    // Mavi tonlar (deniz)
+        (r < 120 && g < 120 && b > 180)       // Koyu mavi tonlar (derin deniz)
+      );
+      
+      if (isLand) {
+        const key = `${col},${row}`;
+        if (selectedCells.has(key)) {
+          selectedCells.delete(key);
+          console.log(`Grid hücresi [${col},${row}] seçimden çıkarıldı`);
+        } else {
+          selectedCells.add(key);
+          console.log(`Grid hücresi [${col},${row}] seçildi`);
+        }
+        redraw();
+        
+        // Seçim bilgisini güncelle
+        updateSelectionInfo();
+      } else {
+        console.log(`Grid hücresi [${col},${row}] seçilemez - Deniz alanı`);
+        
+        // Deniz alanına tıklandığında görsel geri bildirim
+        ctx.beginPath();
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(col * cellWidth, row * cellHeight, cellWidth, cellHeight);
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        setTimeout(() => {
+          redraw();
+        }, 500);
+      }
+    });
+
+    // 📊 Seçim bilgilerini güncelle
+    function updateSelectionInfo() {
+      const selectionCount = selectedCells.size;
+      const coordInfoEl = document.getElementById('coordInfo');
+      
+      if (selectionCount > 0) {
+        coordInfoEl.innerHTML += `<p class="text-purple-400 mt-2">Seçili Kara Hücreleri: ${selectionCount} adet</p>`;
+      }
+    }
+
+    // 🎨 Grid çizimi ile seçili hücreleri birlikte göster
     function redraw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0);
-
-      // Seçilen hücreleri çiz
-      ctx.fillStyle = "rgba(255, 215, 0, 0.6)";
+      
+      // PNG haritasını çiz
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      
+      // Seçili hücreleri çiz (grid altına)
+      ctx.fillStyle = "rgba(34, 197, 94, 0.7)"; // Yeşil ton - kara alanlar için
       selectedCells.forEach(key => {
         const [c, r] = key.split(',').map(Number);
         ctx.fillRect(c * cellWidth, r * cellHeight, cellWidth, cellHeight);
       });
+      
+      // Grid çizgilerini çiz (seçili alanların üstüne)
+      drawGrid();
+      
+      // Seçili hücrelerin kenarlarını vurgula
+      ctx.strokeStyle = "rgba(34, 197, 94, 0.9)";
+      ctx.lineWidth = 1;
+      selectedCells.forEach(key => {
+        const [c, r] = key.split(',').map(Number);
+        ctx.strokeRect(c * cellWidth, r * cellHeight, cellWidth, cellHeight);
+      });
     }
 
-    // Fare hareketinde yapılacaklar:
-    canvas.addEventListener('mousemove', (e) => {
-      redraw(); // Önce büyük resmi ve seçimleri çiz
-
-      const rect = canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      // Zoom alanını çizmek için parametreler
-      const zoomAreaSize = 40;  // kaynakta kaç piksel alıyoruz
-      const zoomScale = 4;      // zoom katsayısı
-
-      // Zoomlu alanı çizmek için kaynak başlangıç koordinatları
-      let sx = mouseX - zoomAreaSize/2;
-      let sy = mouseY - zoomAreaSize/2;
-
-      // Taşma kontrolü
-      if(sx < 0) sx = 0;
-      if(sy < 0) sy = 0;
-      if(sx + zoomAreaSize > canvas.width) sx = canvas.width - zoomAreaSize;
-      if(sy + zoomAreaSize > canvas.height) sy = canvas.height - zoomAreaSize;
-
-      // Zoomlu alanın ana canvas üzerindeki hedef koordinatları (fare imlecinin sağında ve üstünde)
-      let dx = mouseX + 20;
-      let dy = mouseY - zoomAreaSize * zoomScale - 20;
-
-      // Eğer üstte taşarsa altta göster
-      if (dy < 0) dy = mouseY + 20;
-
-      // Küçük zoom kutusunu çiz (çerçeve)
-      ctx.strokeStyle = 'orange';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(dx, dy, zoomAreaSize * zoomScale, zoomAreaSize * zoomScale);
-
-      // Zoomlu alanı çiz (net pikseller için smoothing kapalı)
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(
-        canvas,      // Kaynak olarak kendi canvas'ımız
-        sx, sy,      // Kaynak başlangıç noktası
-        zoomAreaSize, zoomAreaSize,  // Kaynak genişlik/yükseklik
-        dx, dy,     // Hedef başlangıç noktası
-        zoomAreaSize * zoomScale, zoomAreaSize * zoomScale // Hedef genişlik/yükseklik
-      );
-    });
-
-    // Fare tıklamasında seçim yap
-    canvas.addEventListener('click', (e) => {
-      const rect = canvas.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
-
-      // Tıklanan hücreyi bul
-      const col = Math.floor(clickX / cellWidth);
-      const row = Math.floor(clickY / cellHeight);
-
-      // Pixel ortası koordinatı
-      const pixelX = Math.floor(col * cellWidth + cellWidth / 2);
-      const pixelY = Math.floor(row * cellHeight + cellHeight / 2);
-
-      // Piksel rengini kontrol et (örnek: açık alan mı)
-      ctx.drawImage(img, 0, 0);
-      const pixelData = ctx.getImageData(pixelX, pixelY, 1, 1).data;
-      const r = pixelData[0];
-      const g = pixelData[1];
-      const b = pixelData[2];
-
-      if (r >= 200 && g >= 200 && b >= 200) {
-        const key = `${col},${row}`;
-        if (selectedCells.has(key)) {
-          selectedCells.delete(key);
-        } else {
-          selectedCells.add(key);
-        }
-        redraw();
-        console.log('Seçili kutucuklar:', Array.from(selectedCells));
-      } else {
-        console.log(`Denizde ya da seçilemeyen yerde tıklandı → Sütun: ${col}, Satır: ${row}`);
+    // 🎯 GRID ÇİZİMİ (2000x1000 kutucuklar)
+    function drawGrid() {
+      ctx.strokeStyle = 'rgba(128, 128, 128, 0.3)'; // Hafif gri
+      ctx.lineWidth = 0.5;
+      
+      // Dikey çizgiler (kolonlar)
+      for (let i = 0; i <= cols; i++) {
+        const x = i * cellWidth;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
       }
-    });
+      
+      // Yatay çizgiler (satırlar)
+      for (let i = 0; i <= rows; i++) {
+        const y = i * cellHeight;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+    }
 
-    // CSRF token alma fonksiyonu
+    // 🚀 Toplu seçim işlemleri
+    function clearAllSelections() {
+      selectedCells.clear();
+      redraw();
+      updateSelectionInfo();
+    }
+
+    function selectLandCellsInArea(startCol, startRow, endCol, endRow) {
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      tempCtx.drawImage(img, 0, 0);
+      
+      let addedCount = 0;
+      
+      for (let col = startCol; col <= endCol; col++) {
+        for (let row = startRow; row <= endRow; row++) {
+          if (col >= 0 && col < cols && row >= 0 && row < rows) {
+            const pixelX = Math.floor(col * cellWidth + cellWidth / 2);
+            const pixelY = Math.floor(row * cellHeight + cellHeight / 2);
+            
+            const pixelData = tempCtx.getImageData(pixelX, pixelY, 1, 1).data;
+            const r = pixelData[0];
+            const g = pixelData[1];
+            const b = pixelData[2];
+            
+            // Kara alanı kontrolü
+            const isLand = !(
+              (r >= 200 && g >= 200 && b >= 200) ||
+              (r < 100 && g < 150 && b > 150) ||
+              (r < 120 && g < 120 && b > 180)
+            );
+            
+            if (isLand) {
+              const key = `${col},${row}`;
+              if (!selectedCells.has(key)) {
+                selectedCells.add(key);
+                addedCount++;
+              }
+            }
+          }
+        }
+      }
+      
+      console.log(`Toplu seçim: ${addedCount} yeni kara hücresi eklendi`);
+      redraw();
+      updateSelectionInfo();
+    }
+    function showLatLngOnMap(lat, lng) {
+      // Koordinatları canvas piksellerine çevir
+      const x = Math.floor((lng + 180) * (canvas.width / 360));
+      const y = Math.floor((90 - lat) * (canvas.height / 180));
+      
+      // Hangi grid hücresinde olduğunu bul
+      const gridCol = Math.floor(x / cellWidth);
+      const gridRow = Math.floor(y / cellHeight);
+      
+      console.log(`Tıklanan Grid Hücresi: Kolon ${gridCol}, Satır ${gridRow}`);
+      
+      // Zoom alanı parametreleri - grid hücrelerini dikkate alarak
+      const zoomCellRadius = 8; // Merkez etrafında kaç hücre gösterilecek
+      const zoomScale = 4;
+      
+      // Zoom alanının grid koordinatları
+      let startCol = gridCol - zoomCellRadius;
+      let startRow = gridRow - zoomCellRadius;
+      let endCol = gridCol + zoomCellRadius;
+      let endRow = gridRow + zoomCellRadius;
+      
+      // Sınırları kontrol et
+      if (startCol < 0) startCol = 0;
+      if (startRow < 0) startRow = 0;
+      if (endCol >= cols) endCol = cols - 1;
+      if (endRow >= rows) endRow = rows - 1;
+      
+      // Pixel koordinatlarına çevir
+      const sx = startCol * cellWidth;
+      const sy = startRow * cellHeight;
+      const sw = (endCol - startCol + 1) * cellWidth;
+      const sh = (endRow - startRow + 1) * cellHeight;
+      
+      // Zoom gösterimi için konum (sağ üst köşe)
+      const zoomWidth = sw * zoomScale;
+      const zoomHeight = sh * zoomScale;
+      const dx = canvas.width - zoomWidth - 20;
+      const dy = 20;
+      
+      // Haritayı yeniden çiz
+      redraw();
+      
+      // Grid çiz
+      drawGrid();
+      
+      // Tıklanan hücreyi vurgula
+      ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
+      ctx.fillRect(gridCol * cellWidth, gridRow * cellHeight, cellWidth, cellHeight);
+      
+      // Zoom alanını ana haritada çerçevele
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx, sy, sw, sh);
+      
+      // Orijinal konumu işaretle
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, 2 * Math.PI);
+      ctx.fillStyle = 'red';
+      ctx.fill();
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Zoom kutusunu çiz
+      ctx.strokeStyle = 'blue';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(dx, dy, zoomWidth, zoomHeight);
+      
+      // Zoom alanını çiz
+      ctx.imageSmoothingEnabled = false;
+      
+      // Geçici canvas oluştur zoom için
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCanvas.width = sw;
+      tempCanvas.height = sh;
+      
+      // Orijinal harita görüntüsünü geçici canvas'a kopyala
+      tempCtx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+      
+      // Büyütülmüş alanı ana canvas'a çiz
+      ctx.drawImage(tempCanvas, 0, 0, sw, sh, dx, dy, zoomWidth, zoomHeight);
+      
+      // Zoom alanında grid çiz
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.lineWidth = 1;
+      
+      const zoomedCellWidth = cellWidth * zoomScale;
+      const zoomedCellHeight = cellHeight * zoomScale;
+      
+      // Zoom alanında dikey çizgiler
+      for (let i = 0; i <= (endCol - startCol + 1); i++) {
+        const lineX = dx + i * zoomedCellWidth;
+        ctx.beginPath();
+        ctx.moveTo(lineX, dy);
+        ctx.lineTo(lineX, dy + zoomHeight);
+        ctx.stroke();
+      }
+      
+      // Zoom alanında yatay çizgiler
+      for (let i = 0; i <= (endRow - startRow + 1); i++) {
+        const lineY = dy + i * zoomedCellHeight;
+        ctx.beginPath();
+        ctx.moveTo(dx, lineY);
+        ctx.lineTo(dx + zoomWidth, lineY);
+        ctx.stroke();
+      }
+      
+      // Zoom alanında merkez hücreyi vurgula
+      const centerColInZoom = gridCol - startCol;
+      const centerRowInZoom = gridRow - startRow;
+      
+      ctx.fillStyle = 'rgba(255, 255, 0, 0.6)';
+      ctx.fillRect(
+        dx + centerColInZoom * zoomedCellWidth, 
+        dy + centerRowInZoom * zoomedCellHeight, 
+        zoomedCellWidth, 
+        zoomedCellHeight
+      );
+      
+      // Zoom alanında merkez noktayı işaretle
+      const centerX = dx + centerColInZoom * zoomedCellWidth + zoomedCellWidth / 2;
+      const centerY = dy + centerRowInZoom * zoomedCellHeight + zoomedCellHeight / 2;
+      
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 6, 0, 2 * Math.PI);
+      ctx.fillStyle = 'red';
+      ctx.fill();
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Son zoom alanını kaydet (toplu seçim için)
+      lastZoomArea = {
+        startCol: startCol,
+        startRow: startRow,
+        endCol: endCol,
+        endRow: endRow
+      };
+      document.getElementById('coordInfo').innerHTML = 
+        `<p>Seçilen Konum: <span class="text-yellow-400">Enlem: ${lat.toFixed(4)}, Boylam: ${lng.toFixed(4)}</span></p>
+         <p class="text-green-400">Grid Hücresi: Kolon ${gridCol}, Satır ${gridRow}</p>
+         <p class="text-blue-400">Zoom Alanı: ${endCol - startCol + 1}x${endRow - startRow + 1} hücre</p>`;
+    }
+
+    // 🧷 CSRF TOKEN
     function getCookie(name) {
       let cookieValue = null;
       if (document.cookie && document.cookie !== '') {
@@ -144,8 +421,18 @@
       return cookieValue;
     }
 
-    // Seçimleri kaydet (API çağrısı)
+    // 💾 Seçimi kaydet
     function saveSelectedCells() {
+      if (selectedCells.size === 0) {
+        alert("Kaydedilecek seçim yok!");
+        return;
+      }
+      
+      // Gerçek Django endpoint yerine console'a yazdır
+      console.log("Kaydedilecek hücreler:", Array.from(selectedCells));
+      alert(`${selectedCells.size} hücre kaydedildi! (Console'u kontrol edin)`);
+      
+      /*
       fetch('/api/save-cells/', {
         method: 'POST',
         headers: {
@@ -166,9 +453,31 @@
         alert("Sunucuya bağlanırken hata oluştu.");
         console.error(err);
       });
+      */
     }
 
     document.getElementById('saveBtn').addEventListener('click', saveSelectedCells);
+    document.getElementById('clearBtn').addEventListener('click', clearAllSelections);
+    
+    // Görünen zoom alanındaki kara hücrelerini seç
+    let lastZoomArea = null;
+    document.getElementById('selectVisibleBtn').addEventListener('click', () => {
+      if (lastZoomArea) {
+        selectLandCellsInArea(
+          lastZoomArea.startCol, 
+          lastZoomArea.startRow, 
+          lastZoomArea.endCol, 
+          lastZoomArea.endRow
+        );
+      } else {
+        alert('Önce 3D haritada bir noktaya tıklayarak zoom alanı oluşturun!');
+      }
+    });
+
+    // Pencere boyutu değiştiğinde globe'u yeniden boyutlandır
+    window.addEventListener('resize', () => {
+      globe.width(document.getElementById('globeViz').offsetWidth);
+    });
   </script>
 </body>
 </html>
