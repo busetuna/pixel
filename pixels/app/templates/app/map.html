@@ -1,38 +1,63 @@
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>3D ve 2D Harita Entegrasyonu</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/three"></script>
-  <script src="https://unpkg.com/globe.gl"></script>
-</head>
-<body class="bg-gray-900 flex flex-col items-center justify-center min-h-screen p-4 space-y-6">
+  <head>
+    <meta charset="UTF-8" />
+    <title>3D ve 2D Harita Entegrasyonu</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/three@0.150.1/build/three.min.js"></script>
+    <script src="https://unpkg.com/globe.gl"></script>
+    <style>
+      body::before {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: -1;
+        background-image: url('https://unpkg.com/three-globe/example/img/night-sky.png');
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-900 min-h-screen flex flex-col items-center px-4 py-6 space-y-6">
 
-  <!-- 3D GLOBE -->
-  <div id="globeViz" class="w-full max-w-5xl h-[400px] border-4 border-pink-400 rounded-xl shadow-xl"></div>
+    <!-- 3D GLOBE -->
+    <div id="globeViz" class="w-full max-w-5xl h-[400px] border-4 border-gray-400 rounded-xl shadow-xl"></div>
 
-  <!-- Koordinat Bilgisi -->
-  <div id="coordInfo" class="text-white text-center">
-    <p>3D globe'da bir noktaya tıklayın</p>
-  </div>
+    <!-- Koordinat Bilgisi -->
+    <div id="coordInfo" class="text-white text-center">
+      <p>3D globe'da bir noktaya tıklayın</p>
+    </div>
 
-  <!-- 2D HARİTA -->
-  <canvas id="mapCanvas" width="2000" height="1000" class="block border-4 border-yellow-400 rounded-xl shadow-xl"></canvas>
+    <!-- Ana Grid Alanı -->
+    <div class="flex flex-col lg:flex-row gap-6 w-full max-w-7xl">
+      <!-- 2D HARİTA -->
+      <canvas id="mapCanvas" width="2000" height="1000" class="block border-4 border-gray-400 rounded-xl shadow-xl w-full"></canvas>
 
-  <button id="saveBtn" class="px-6 py-2 bg-yellow-500 rounded text-black font-semibold hover:bg-yellow-400 transition mt-4">
-    Seçimleri Kaydet
-  </button>
-  
-  <div class="flex gap-4 mt-4">
-    <button id="clearBtn" class="px-4 py-2 bg-red-500 rounded text-white font-semibold hover:bg-red-400 transition">
-      Seçimleri Temizle
-    </button>
-    <button id="selectVisibleBtn" class="px-4 py-2 bg-green-500 rounded text-white font-semibold hover:bg-green-400 transition">
-      Görünen Alandaki Karaları Seç
-    </button>
-  </div>
+      <!-- Zoom Paneli -->
+      <div class="flex flex-col items-center bg-gray-800 p-4 rounded-xl shadow-xl w-full lg:w-[400px]">
+        <h2 class="text-white text-lg mb-2">Seçilen Alanın Yakınlaştırması</h2>
+        <canvas id="zoomCanvas" width="384" height="384" class="rounded border-2 border-gray-300"></canvas>
+      </div>
+    </div>
+
+    <!-- Butonlar -->
+    <div class="flex flex-wrap gap-4 justify-center mt-6">
+      <button id="saveBtn" class="px-6 py-2 bg-yellow-500 text-black font-semibold rounded-lg shadow hover:bg-yellow-400 transition">
+        Seçimleri Kaydet
+      </button>
+      <button id="clearBtn" class="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow hover:bg-red-400 transition">
+        Seçimleri Temizle
+      </button>
+      <button id="selectVisibleBtn" class="px-4 py-2 bg-green-500 text-white font-semibold rounded-lg shadow hover:bg-green-400 transition">
+        Görünen Alandaki Karaları Seç
+      </button>
+    </div>
 
   <script>
     // 🌍 GLOBE GL BAŞLAT
@@ -42,13 +67,15 @@
       .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
       .width(document.getElementById('globeViz').offsetWidth)
       .height(400);
-
+    let lastSelectedCoords = null;
     // Globe'da tıklama olayını yakalama
     globe.onGlobeClick((coords, event) => {
       if (coords) {
         const lat = coords.lat;
         const lng = coords.lng;
         console.log("Tıklanan Koordinat:", lat, lng);
+        lastSelectedCoords = coords;
+    showLatLngOnMap(coords.lat, coords.lng);
         
         // Koordinat bilgisini göster
         document.getElementById('coordInfo').innerHTML = 
@@ -58,12 +85,17 @@
         showLatLngOnMap(lat, lng);
       }
     });
-
+    globe.controls().addEventListener('change', () => {
+  if (lastSelectedCoords) {
+    showLatLngOnMap(lastSelectedCoords.lat, lastSelectedCoords.lng);
+  }
+});
+    
     // 🗺️ 2D CANVAS İŞLEMLERİ
     const canvas = document.getElementById('mapCanvas');
     const ctx = canvas.getContext('2d');
     const img = new Image();
-    img.src = "{% static 'app/map1.png' %}"; // Sizin PNG haritanız
+    img.src = "{% static 'app/map2.png' %}"; // Sizin PNG haritanız
     
     const cols = 2000;
     const rows = 1000;
@@ -160,7 +192,7 @@
         coordInfoEl.innerHTML += `<p class="text-purple-400 mt-2">Seçili Kara Hücreleri: ${selectionCount} adet</p>`;
       }
     }
-
+   
     // 🎨 Grid çizimi ile seçili hücreleri birlikte göster
     function redraw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -189,7 +221,7 @@
 
     // 🎯 GRID ÇİZİMİ (2000x1000 kutucuklar)
     function drawGrid() {
-      ctx.strokeStyle = 'rgba(128, 128, 128, 0.3)'; // Hafif gri
+      ctx.strokeStyle = 'rgba(15, 14, 14, 0.3)'; // Hafif gri
       ctx.lineWidth = 0.5;
       
       // Dikey çizgiler (kolonlar)
@@ -262,8 +294,8 @@
     }
     function showLatLngOnMap(lat, lng) {
       // Koordinatları canvas piksellerine çevir
-      const x = Math.floor((lng + 180) * (canvas.width / 360));
-      const y = Math.floor((90 - lat) * (canvas.height / 180));
+      const x = Math.round((lng + 180) * (canvas.width / 360));
+      const y = Math.round((90 - lat) * (canvas.height / 180));
       
       // Hangi grid hücresinde olduğunu bul
       const gridCol = Math.floor(x / cellWidth);
@@ -272,8 +304,8 @@
       console.log(`Tıklanan Grid Hücresi: Kolon ${gridCol}, Satır ${gridRow}`);
       
       // Zoom alanı parametreleri - grid hücrelerini dikkate alarak
-      const zoomCellRadius = 8; // Merkez etrafında kaç hücre gösterilecek
-      const zoomScale = 4;
+      const zoomCellRadius = 12; // Merkez etrafında kaç hücre gösterilecek
+      const zoomScale = 6;
       
       // Zoom alanının grid koordinatları
       let startCol = gridCol - zoomCellRadius;
@@ -310,7 +342,7 @@
       ctx.fillRect(gridCol * cellWidth, gridRow * cellHeight, cellWidth, cellHeight);
       
       // Zoom alanını ana haritada çerçevele
-      ctx.strokeStyle = 'red';
+      ctx.strokeStyle = 'black';
       ctx.lineWidth = 2;
       ctx.strokeRect(sx, sy, sw, sh);
       
@@ -379,7 +411,16 @@
         zoomedCellWidth, 
         zoomedCellHeight
       );
-      
+      // Zoom modalı aç
+
+// Sabit zoom kutusunu güncelle
+const zoomCanvas = document.getElementById('zoomCanvas');
+const zoomCtx = zoomCanvas.getContext('2d');
+zoomCtx.clearRect(0, 0, zoomCanvas.width, zoomCanvas.height);
+
+// tempCanvas: büyütülecek alanı geçici olarak tuttuğumuz canvas
+zoomCtx.drawImage(tempCanvas, 0, 0, sw, sh, 0, 0, zoomCanvas.width, zoomCanvas.height);
+
       // Zoom alanında merkez noktayı işaretle
       const centerX = dx + centerColInZoom * zoomedCellWidth + zoomedCellWidth / 2;
       const centerY = dy + centerRowInZoom * zoomedCellHeight + zoomedCellHeight / 2;
