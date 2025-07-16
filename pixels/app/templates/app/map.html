@@ -189,192 +189,55 @@
       document.getElementById('zoomLevel').textContent = zoom;
     }
 
-    // Devre dışı bırakılan hücreler (mavi/deniz alanları)
-    const disabledCells = new Set();
+    // Tile layer canvas'ını almak için yardımcı fonksiyon
+    function getTileCanvas() {
+      const panes = map.getPanes();
+      const tilePane = panes.tilePane;
+      const canvases = tilePane.querySelectorAll('canvas');
+      return canvases.length > 0 ? canvases[0] : null;
+    }
 
-    // Basit deniz tespiti (koordinat bazlı)
-    function isWaterCoordinate(lat, lng) {
-      // Büyük okyanus alanları
+    // Mavi pixel kontrolü
+    function isBluePixel(x, y) {
+      try {
+        // Ana harita canvas'ını bul
+        const mapCanvas = getTileCanvas();
+        if (!mapCanvas) return false;
+
+        const ctx = mapCanvas.getContext('2d');
+        const imageData = ctx.getImageData(x, y, 1, 1);
+        const [r, g, b, a] = imageData.data;
+
+        // Mavi tonları kontrolü (deniz renkleri)
+        // Mavi bileşen > kırmızı ve yeşil bileşen
+        const isBluish = b > r && b > g && b > 100;
+        
+        // Açık mavi tonları (deniz)
+        const isLightBlue = b > 150 && g > 120 && r < 200;
+        
+        // Koyu mavi tonları (derin deniz)
+        const isDarkBlue = b > 80 && r < 100 && g < 100;
+
+        return isBluish || isLightBlue || isDarkBlue;
+      } catch (e) {
+        console.warn('Pixel okuma hatası:', e);
+        return false;
+      }
+    }
+
+    // Alternatif: Harita tile verilerini kontrol et
+    function isWaterArea(lat, lng) {
+      // Basit koordinat kontrolü (yedek sistem)
+      // Çok büyük okyanus alanları
       if (lat < -60 || lat > 75) return true;
       
-      // Pasifik Okyanusu - büyük açık deniz
-      if (lat > -40 && lat < 60) {
-        if (lng > -180 && lng < -120) return true;
-        if (lng > 120 && lng < 180) return true;
+      // Büyük Pasifik alanları
+      if (lat > -30 && lat < 30) {
+        if (lng > -160 && lng < -120) return true; // Pasifik
+        if (lng > 160 && lng < 180) return true;   // Pasifik
       }
-      
-      // Atlantik Okyanusu - orta kısım
-      if (lat > -40 && lat < 60 && lng > -60 && lng < 20) {
-        // Kara alanlarını hariç tut
-        if (lat > 35 && lat < 72 && lng > -25 && lng < 45) return false; // Avrupa/Afrika
-        if (lat > 25 && lat < 50 && lng > -125 && lng < -60) return false; // Kuzey Amerika
-        if (lat > -35 && lat < 15 && lng > -80 && lng < -35) return false; // Güney Amerika
-        return true;
-      }
-      
-      // Hint Okyanusu
-      if (lat > -60 && lat < 30 && lng > 20 && lng < 120) {
-        if (lat > -35 && lat < 40 && lng > 20 && lng < 50) return false; // Afrika
-        if (lat > -45 && lat < 10 && lng > 110 && lng < 155) return false; // Avustralya
-        return true;
-      }
-      
-      // Akdeniz
-      if (lat > 30 && lat < 46 && lng > -6 && lng < 42) return true;
-      
-      // Karadeniz
-      if (lat > 40 && lat < 48 && lng > 27 && lng < 42) return true;
-      
-      // Hazar Denizi
-      if (lat > 36 && lat < 47 && lng > 46 && lng < 55) return true;
-      
-      // Büyük Göller (Kuzey Amerika)
-      if (lat > 41 && lat < 49 && lng > -93 && lng < -76) return true;
       
       return false;
-    }
-
-    // Hücrelerin durumunu kontrol et ve devre dışı olanları işaretle
-    function updateDisabledCells() {
-      disabledCells.clear();
-      
-      for (let row = 0; row < gridRows; row++) {
-        for (let col = 0; col < gridCols; col++) {
-          const lat = maxLat - row * latStep;
-          const lng = minLng + col * lngStep;
-          
-          if (isWaterCoordinate(lat, lng)) {
-            disabledCells.add(`${col},${row}`);
-          }
-        }
-      }
-      
-      console.log(`${disabledCells.size} hücre devre dışı bırakıldı (deniz alanları)`);
-    }
-
-    function drawGrid() {
-      resizeCanvas();
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const bounds = map.getBounds();
-      const north = bounds.getNorth();
-      const south = bounds.getSouth();
-      const west = bounds.getWest();
-      const east = bounds.getEast();
-
-      // Görünür hücrelerin aralığı
-      const startRow = Math.max(0, Math.floor((maxLat - north) / latStep));
-      const endRow = Math.min(gridRows - 1, Math.ceil((maxLat - south) / latStep));
-      const startCol = Math.max(0, Math.floor((west - minLng) / lngStep));
-      const endCol = Math.min(gridCols - 1, Math.ceil((east - minLng) / lngStep));
-
-      const zoom = map.getZoom();
-      
-      // Zoom seviyesine göre grid çizgilerinin sıklığını ayarla
-      let gridStep = 100;
-      if (zoom > 8) gridStep = 50;
-      if (zoom > 12) gridStep = 25;
-      if (zoom > 15) gridStep = 10;
-
-      // Grid çizgileri
-      ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-      ctx.lineWidth = 0.5;
-
-      // Yatay çizgiler (enlemler)
-      for (let r = startRow; r <= endRow; r++) {
-        if (r % gridStep === 0) {
-          const lat = maxLat - r * latStep;
-          const p1 = map.latLngToContainerPoint([lat, west]);
-          const p2 = map.latLngToContainerPoint([lat, east]);
-          
-          if (p1.y >= 0 && p1.y <= canvas.height) {
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Dikey çizgiler (boylamlar)
-      for (let c = startCol; c <= endCol; c++) {
-        if (c % gridStep === 0) {
-          const lng = minLng + c * lngStep;
-          const p1 = map.latLngToContainerPoint([north, lng]);
-          const p2 = map.latLngToContainerPoint([south, lng]);
-          
-          if (p1.x >= 0 && p1.x <= canvas.width) {
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Devre dışı hücreleri gri olarak göster
-      ctx.fillStyle = 'rgba(150,150,150,0.3)';
-      disabledCells.forEach(key => {
-        const [col, row] = key.split(',').map(Number);
-
-        if (row < startRow || row > endRow || col < startCol || col > endCol) return;
-
-        const lat1 = maxLat - row * latStep;
-        const lng1 = minLng + col * lngStep;
-        const lat2 = lat1 - latStep;
-        const lng2 = lng1 + lngStep;
-
-        const topLeft = map.latLngToContainerPoint([lat1, lng1]);
-        const bottomRight = map.latLngToContainerPoint([lat2, lng2]);
-
-        const width = bottomRight.x - topLeft.x;
-        const height = bottomRight.y - topLeft.y;
-
-        if (topLeft.x < canvas.width && bottomRight.x > 0 && 
-            topLeft.y < canvas.height && bottomRight.y > 0) {
-          ctx.fillRect(topLeft.x, topLeft.y, width, height);
-        }
-      });
-
-      // Seçilen hücreleri çiz
-      ctx.fillStyle = 'rgba(34,197,94,0.6)';
-      ctx.strokeStyle = 'rgba(34,197,94,0.8)';
-      ctx.lineWidth = 1;
-
-      selectedCells.forEach(key => {
-        const [col, row] = key.split(',').map(Number);
-
-        if (row < startRow || row > endRow || col < startCol || col > endCol) return;
-
-        // Kutucuğun köşe koordinatları
-        const lat1 = maxLat - row * latStep;
-        const lng1 = minLng + col * lngStep;
-        const lat2 = lat1 - latStep;
-        const lng2 = lng1 + lngStep;
-
-        // Piksel koordinatları
-        const topLeft = map.latLngToContainerPoint([lat1, lng1]);
-        const bottomRight = map.latLngToContainerPoint([lat2, lng2]);
-
-        const width = bottomRight.x - topLeft.x;
-        const height = bottomRight.y - topLeft.y;
-
-        // Kutucuk görünür alanda mı kontrol et
-        if (topLeft.x < canvas.width && bottomRight.x > 0 && 
-            topLeft.y < canvas.height && bottomRight.y > 0) {
-          
-          ctx.fillRect(topLeft.x, topLeft.y, width, height);
-          
-          // Zoom seviyesi yüksekse kenarlık çiz
-          if (zoom > 10) {
-            ctx.strokeRect(topLeft.x, topLeft.y, width, height);
-          }
-        }
-      });
-
-      // UI güncellemesi
-      document.getElementById('selectedCount').textContent = selectedCells.size.toLocaleString();
-      document.getElementById('zoomLevel').textContent = zoom;
     }
 
     // Tıklama işlemi
@@ -385,6 +248,18 @@
 
       const latlng = map.containerPointToLatLng(L.point(x, y));
 
+      // Önce pixel rengini kontrol et
+      if (isBluePixel(x, y)) {
+        console.log('Mavi alan (deniz) seçilemez!');
+        return;
+      }
+
+      // Yedek kontrol
+      if (isWaterArea(latlng.lat, latlng.lng)) {
+        console.log('Su alanı seçilemez!');
+        return;
+      }
+
       // Grid hücresini hesapla
       const row = Math.floor((maxLat - latlng.lat) / latStep);
       const col = Math.floor((latlng.lng - minLng) / lngStep);
@@ -392,12 +267,6 @@
       if (col < 0 || col >= gridCols || row < 0 || row >= gridRows) return;
 
       const key = `${col},${row}`;
-
-      // Devre dışı hücre kontrolü
-      if (disabledCells.has(key)) {
-        console.log('Bu hücre devre dışı (deniz alanı)!');
-        return;
-      }
 
       if (selectedCells.has(key)) {
         selectedCells.delete(key);
@@ -415,16 +284,10 @@
 
     // Harita olayları
     map.on('move zoom resize', drawGrid);
-    map.whenReady(() => {
-      updateDisabledCells();
-      drawGrid();
-    });
+    map.whenReady(drawGrid);
 
-    // Başlangıçta disabled hücreleri hesapla
-    setTimeout(() => {
-      updateDisabledCells();
-      drawGrid();
-    }, 100);
+    // Başlangıçta grid çiz
+    setTimeout(drawGrid, 100);
   </script>
 </body>
 </html>
