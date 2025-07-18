@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
-  <title>Kayıt Ol</title>
+  <title>Giriş Yap</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
     html, body {
@@ -26,31 +26,27 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      background: rgba(255, 255, 255, 0.15);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      box-shadow: 0 0 30px rgba(0, 0, 0, 0.2);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
       padding: 30px;
       border-radius: 15px;
+      box-shadow: 0 0 25px rgba(0, 0, 0, 0.3);
       z-index: 999;
       width: 320px;
       color: #fff;
-      text-align: center;
     }
 
     #authArea h2 {
-      margin-bottom: 20px;
-      font-size: 24px;
-      color: #ffffff;
-      font-weight: 600;
+      margin-top: 0;
+      color: #fff;
     }
 
     #authArea input, #authArea button {
       width: 100%;
-      padding: 12px;
       margin-top: 10px;
-      border: none;
+      padding: 10px;
       border-radius: 8px;
+      border: none;
       font-size: 14px;
     }
 
@@ -60,86 +56,42 @@
     }
 
     #authArea input::placeholder {
-      color: #eee;
-    }
-
-    #authArea input:focus {
-      background: rgba(255, 255, 255, 0.3);
-      outline: none;
+      color: #ccc;
     }
 
     #authArea button {
-      background: #10b981;
+      background: #3b82f6;
       color: white;
       cursor: pointer;
       transition: 0.3s;
     }
 
     #authArea button:hover {
-      background: #059669;
+      background: #2563eb;
     }
 
     a {
       color: #fff;
       text-decoration: underline;
     }
-
-    .messages {
-      color: white;
-      margin-bottom: 10px;
-    }
-
-    .errorlist {
-      list-style-type: none;
-      padding: 0;
-      color: #f87171;
-      font-size: 14px;
-    }
   </style>
 </head>
 <body>
-
-  <!-- Harita -->
   <div id="map"></div>
 
-  <!-- Django Kayıt Formu -->
   <div id="authArea">
-    <h2>Kayıt Ol</h2>
-
-    <!-- Form Hatalarını Göster -->
+    <h2>Giriş Yap</h2>
     {% if form.errors %}
-      <ul class="errorlist">
-        {% for field in form %}
-          {% for error in field.errors %}
-            <li><strong>{{ field.label }}:</strong> {{ error }}</li>
-          {% endfor %}
-        {% endfor %}
-        {% for error in form.non_field_errors %}
-          <li>{{ error }}</li>
-        {% endfor %}
-      </ul>
+      <p style="color: red;">Kullanıcı adı veya şifre yanlış!</p>
     {% endif %}
-
-    <!-- Kayıt Formu -->
-    <form method="POST" action="{% url 'register' %}">
+    <form method="POST">
       {% csrf_token %}
       {{ form.as_p }}
-      <button type="submit">Kayıt Ol</button>
+      <button type="submit">Giriş Yap</button>
     </form>
-
-    <!-- Mesajlar -->
-    {% if messages %}
-      <div class="messages">
-        {% for message in messages %}
-          <p>{{ message }}</p>
-        {% endfor %}
-      </div>
-    {% endif %}
-
-    <p>Zaten hesabın var mı? <a href="{% url 'login' %}">Giriş yap</a></p>
+    <p>Hesabın yok mu? <a href="{% url 'register' %}">Kayıt ol</a></p>
   </div>
 
-  <!-- Harita Scripti -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
     const map = L.map('map').setView([39.92, 32.85], 6);
