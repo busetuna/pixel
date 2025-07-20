@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <title>Harita Seçimi (Antrasit)</title>
+  <title>Harita Seçimi (Tam Ekran)</title>
   <style>
     html, body {
       margin: 0;
@@ -11,43 +11,47 @@
       height: 100%;
       
       background: #0A1019;
-background-image: url("https://www.transparenttextures.com/patterns/stardust.png");
-        
-
+      background-image: url("https://www.transparenttextures.com/patterns/stardust.png");
     }
 
     #mapImage {
-  -webkit-mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
-  mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
-}
-
+      -webkit-mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+      mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+    }
+    
     #container {
       position: relative;
-      width: 100%;
-      height: 100%;
+      width: 100vw;
+      height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
     }
+    
     #mapContainer {
       position: relative;
-      max-width: 100%;
-      max-height: 100%;
+      width: 100%;
+      height: 100%;
     }
+    
     #mapImage {
       display: block;
-      max-width: 100%;
-      max-height: 100vh;
-      object-fit: contain;
+      width: 100%;
+      height: 100%;
+      object-fit: cover; /* Ekranı tam kaplaması için cover kullan */
       background: #333;
     }
+    
     #gridCanvas {
       position: absolute;
       top: 0; 
       left: 0;
+      width: 100%;
+      height: 100%;
       pointer-events: auto;
       cursor: crosshair;
     }
+    
     #info {
       position: absolute;
       top: 10px; right: 10px;
@@ -57,6 +61,7 @@ background-image: url("https://www.transparenttextures.com/patterns/stardust.png
       font-family: Arial;
       z-index: 2;
     }
+    
     #debug {
       position: absolute;
       bottom: 10px; left: 10px;
@@ -102,51 +107,144 @@ background-image: url("https://www.transparenttextures.com/patterns/stardust.png
     let imageDataCanvas = null;
     let imageCtx = null;
     let imageData = null;
+    let imageScale = 1;
+    let imageOffsetX = 0;
+    let imageOffsetY = 0;
+
+    // Sürükleme seçimi değişkenleri
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragCurrentX = 0;
+    let dragCurrentY = 0;
 
     function resize() {
-      // Canvas boyutunu img elementinin gerçek görüntülenen boyutuna eşitle
-      const imgRect = img.getBoundingClientRect();
-      canvas.width = imgRect.width;
-      canvas.height = imgRect.height;
+      // Canvas boyutunu viewport'a eşitle
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
 
-      // Görüntü verilerini analiz etmek için ayrı canvas
-      if (!imageDataCanvas && img.naturalWidth > 0) {
-        imageDataCanvas = document.createElement("canvas");
-        imageDataCanvas.width = img.naturalWidth;
-        imageDataCanvas.height = img.naturalHeight;
-        imageCtx = imageDataCanvas.getContext("2d");
+      // object-fit: cover için scaling hesaplaması
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        const containerAspect = canvas.width / canvas.height;
+        const imageAspect = img.naturalWidth / img.naturalHeight;
         
-        // Görüntüyü imageDataCanvas'a çiz
-        imageCtx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
-        imageData = imageCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
+        if (containerAspect > imageAspect) {
+          // Container daha geniş, görüntü genişliğe sığdırılır
+          imageScale = canvas.width / img.naturalWidth;
+          imageOffsetX = 0;
+          imageOffsetY = (canvas.height - (img.naturalHeight * imageScale)) / 2;
+        } else {
+          // Container daha dar, görüntü yüksekliğe sığdırılır
+          imageScale = canvas.height / img.naturalHeight;
+          imageOffsetX = (canvas.width - (img.naturalWidth * imageScale)) / 2;
+          imageOffsetY = 0;
+        }
+
+        // Görüntü verilerini analiz etmek için ayrı canvas
+        if (!imageDataCanvas) {
+          imageDataCanvas = document.createElement("canvas");
+          imageDataCanvas.width = img.naturalWidth;
+          imageDataCanvas.height = img.naturalHeight;
+          imageCtx = imageDataCanvas.getContext("2d");
+          
+          // Görüntüyü imageDataCanvas'a çiz
+          imageCtx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
+          imageData = imageCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
+        }
       }
 
-      debugEl.textContent = `Harita: ${img.naturalWidth}x${img.naturalHeight} | Canvas: ${canvas.width}x${canvas.height} | Görüntülenen: ${Math.round(imgRect.width)}x${Math.round(imgRect.height)}`;
+      debugEl.textContent = `Harita: ${img.naturalWidth}x${img.naturalHeight} | Canvas: ${canvas.width}x${canvas.height} | Scale: ${imageScale.toFixed(2)}`;
       draw();
     }
 
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const cellW = canvas.width / cols;
-      const cellH = canvas.height / rows;
+      
+      // Görüntünün görünür alanını hesapla
+      const visibleWidth = img.naturalWidth * imageScale;
+      const visibleHeight = img.naturalHeight * imageScale;
+      
+      const cellW = visibleWidth / cols;
+      const cellH = visibleHeight / rows;
 
+      // Grid çizgilerini çiz (önce grid, sonra seçimler)
+      if (cellW > 2 && cellH > 2) { // Çok küçük hücreler için grid çizme
+        ctx.strokeStyle = "rgba(255,255,255,0.3)";
+        ctx.lineWidth = 0.5;
+        
+        // Dikey çizgiler (sütunlar)
+        for (let x = 0; x <= cols; x++) {
+          const screenX = imageOffsetX + (x * cellW);
+          if (screenX >= 0 && screenX <= canvas.width) {
+            ctx.beginPath();
+            ctx.moveTo(screenX, Math.max(0, imageOffsetY));
+            ctx.lineTo(screenX, Math.min(canvas.height, imageOffsetY + visibleHeight));
+            ctx.stroke();
+          }
+        }
+        
+        // Yatay çizgiler (satırlar)
+        for (let y = 0; y <= rows; y++) {
+          const screenY = imageOffsetY + (y * cellH);
+          if (screenY >= 0 && screenY <= canvas.height) {
+            ctx.beginPath();
+            ctx.moveTo(Math.max(0, imageOffsetX), screenY);
+            ctx.lineTo(Math.min(canvas.width, imageOffsetX + visibleWidth), screenY);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Seçili hücreleri çiz
       ctx.fillStyle = "rgba(34,197,94,0.6)";
       ctx.strokeStyle = "rgba(34,197,94,0.8)";
       ctx.lineWidth = 1;
 
       selected.forEach(key => {
         const [x, y] = key.split(',').map(Number);
-        ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
-        if (canvas.width > 500) { // Grid çizgilerini sadece yeterli boyutta göster
-          ctx.strokeRect(x * cellW, y * cellH, cellW, cellH);
+        const screenX = imageOffsetX + (x * cellW);
+        const screenY = imageOffsetY + (y * cellH);
+        
+        // Sadece görünür alanda olan hücreleri çiz
+        if (screenX + cellW > 0 && screenX < canvas.width && 
+            screenY + cellH > 0 && screenY < canvas.height) {
+          ctx.fillRect(screenX, screenY, cellW, cellH);
+          ctx.strokeRect(screenX, screenY, cellW, cellH);
         }
       });
+
+      // Sürükleme kutusunu çiz
+      if (isDragging) {
+        const minX = Math.min(dragStartX, dragCurrentX);
+        const minY = Math.min(dragStartY, dragCurrentY);
+        const width = Math.abs(dragCurrentX - dragStartX);
+        const height = Math.abs(dragCurrentY - dragStartY);
+
+        ctx.strokeStyle = "rgba(255,255,0,0.8)";
+        ctx.fillStyle = "rgba(255,255,0,0.2)";
+        ctx.lineWidth = 2;
+        
+        ctx.fillRect(minX, minY, width, height);
+        ctx.strokeRect(minX, minY, width, height);
+      }
 
       selectedCountEl.textContent = selected.size;
     }
 
+    function screenToGrid(screenX, screenY) {
+      // Ekran koordinatlarını grid koordinatlarına dönüştür
+      const imageX = (screenX - imageOffsetX) / imageScale;
+      const imageY = (screenY - imageOffsetY) / imageScale;
+      
+      const col = Math.floor((imageX / img.naturalWidth) * cols);
+      const row = Math.floor((imageY / img.naturalHeight) * rows);
+      
+      return [col, row];
+    }
+
     function isLandCell(col, row) {
-      if (!imageData || !imageDataCanvas) return true; // Eğer görüntü yüklenmemişse her yeri seçilebilir say
+      if (!imageData || !imageDataCanvas) return true;
+      if (col < 0 || col >= cols || row < 0 || row >= rows) return false;
       
       const pixelList = [
         [0, 0],
@@ -178,34 +276,41 @@ background-image: url("https://www.transparenttextures.com/patterns/stardust.png
 
       if (validCount === 0) return false;
       const avgBrightness = totalBrightness / validCount;
-      return avgBrightness > 100; // eşik
+      return avgBrightness > 100;
     }
 
-    canvas.addEventListener("click", e => {
+    function selectRectangleArea(startX, startY, endX, endY) {
+      const [startCol, startRow] = screenToGrid(startX, startY);
+      const [endCol, endRow] = screenToGrid(endX, endY);
+      
+      const minCol = Math.max(0, Math.min(startCol, endCol));
+      const maxCol = Math.min(cols - 1, Math.max(startCol, endCol));
+      const minRow = Math.max(0, Math.min(startRow, endRow));
+      const maxRow = Math.min(rows - 1, Math.max(startRow, endRow));
+      
+      for (let col = minCol; col <= maxCol; col++) {
+        for (let row = minRow; row <= maxRow; row++) {
+          if (isLandCell(col, row)) {
+            const key = `${col},${row}`;
+            selected.add(key);
+          }
+        }
+      }
+    }
+
+    // Mouse event listeners
+    canvas.addEventListener("mousedown", e => {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-
-      const col = Math.floor((x / canvas.width) * cols);
-      const row = Math.floor((y / canvas.height) * rows);
-      const key = `${col},${row}`;
-
-      lastClickEl.textContent = `(${col}, ${row})`;
-
-      if (!isLandCell(col, row)) {
-        console.log("🌊 Bu hücre deniz, seçilemez.");
-        return;
-      }
-
-      if (selected.has(key)) {
-        selected.delete(key);
-        console.log("❌ Hücre seçimi kaldırıldı:", key);
-      } else {
-        selected.add(key);
-        console.log("✅ Hücre seçildi:", key);
-      }
-
-      draw();
+      
+      isDragging = true;
+      dragStartX = x;
+      dragStartY = y;
+      dragCurrentX = x;
+      dragCurrentY = y;
+      
+      e.preventDefault();
     });
 
     canvas.addEventListener("mousemove", e => {
@@ -213,11 +318,59 @@ background-image: url("https://www.transparenttextures.com/patterns/stardust.png
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      const col = Math.floor((x / canvas.width) * cols);
-      const row = Math.floor((y / canvas.height) * rows);
+      if (isDragging) {
+        dragCurrentX = x;
+        dragCurrentY = y;
+        draw(); // Sürükleme kutusunu göstermek için yeniden çiz
+      }
 
-      if (col >= 0 && col < cols && row >= 0 && row < rows) {
-        // Mouse pozisyonu debug bilgisi için kullanılabilir
+      const [col, row] = screenToGrid(x, y);
+      // Mouse pozisyonu debug bilgisi için kullanılabilir
+    });
+
+    canvas.addEventListener("mouseup", e => {
+      if (isDragging) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        // Eğer çok küçük bir hareket ise tek hücre seçimi yap
+        const dragDistance = Math.abs(x - dragStartX) + Math.abs(y - dragStartY);
+        
+        if (dragDistance < 5) {
+          // Tek tıklama gibi davran
+          const [col, row] = screenToGrid(x, y);
+          const key = `${col},${row}`;
+          
+          lastClickEl.textContent = `(${col}, ${row})`;
+
+          if (!isLandCell(col, row)) {
+            console.log("🌊 Bu hücre deniz veya sınır dışı, seçilemez.");
+          } else {
+            if (selected.has(key)) {
+              selected.delete(key);
+              console.log("❌ Hücre seçimi kaldırıldı:", key);
+            } else {
+              selected.add(key);
+              console.log("✅ Hücre seçildi:", key);
+            }
+          }
+        } else {
+          // Kutu seçimi yap
+          selectRectangleArea(dragStartX, dragStartY, x, y);
+          console.log("📦 Kutu alanı seçildi");
+        }
+        
+        isDragging = false;
+        draw();
+      }
+    });
+
+    // Canvas dışına çıkarsa sürüklemeyi iptal et
+    canvas.addEventListener("mouseleave", e => {
+      if (isDragging) {
+        isDragging = false;
+        draw();
       }
     });
 
@@ -229,14 +382,6 @@ background-image: url("https://www.transparenttextures.com/patterns/stardust.png
 
     // Pencere boyutu değiştiğinde resize çağır
     window.addEventListener("resize", resize);
-
-    // ResizeObserver ile img elementinin boyut değişikliklerini izle
-    if (window.ResizeObserver) {
-      const resizeObserver = new ResizeObserver(entries => {
-        resize();
-      });
-      resizeObserver.observe(img);
-    }
 
     // Sayfa yüklendiğinde başlat
     window.addEventListener("load", () => {
