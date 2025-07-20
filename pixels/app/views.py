@@ -46,3 +46,16 @@ def register(request):
     else:
         form = UsernameOnlyUserCreationForm()
     return render(request, 'app/register.html', {'form': form})
+
+
+
+def save_selection(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        selected_cells = data.get("selected", [])
+        
+        # Burada veriyi istediğin gibi işleyebilirsin, örn: kaydet, yaz, işle...
+        print("Seçilen hücreler:", selected_cells[:5], "... toplam:", len(selected_cells))
+
+        return JsonResponse({"message": f"{len(selected_cells)} hücre kaydedildi!"})
+    return JsonResponse({"error": "Sadece POST isteği kabul edilir"}, status=405)

@@ -2,292 +2,204 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <title>Leaflet + Canvas Grid - 2 Milyon Kutucuk</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <title>Harita Seçimi (Antrasit)</title>
   <style>
-    html, body, #map {
+    html, body {
+      margin: 0; padding: 0;
+      overflow: hidden;
       height: 100%;
-      width: 100%;
-      margin: 0;
-      padding: 0;
+      background: #111;
     }
-    #map {
+    #container {
       position: relative;
-    }
-    canvas#gridCanvas {
-      position: absolute;
-      top: 0; 
-      left: 0;
-      pointer-events: none;
-      z-index: 500;
       width: 100%;
       height: 100%;
+    }
+    #mapImage {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+    }
+    #gridCanvas {
+      position: absolute;
+      top: 0; left: 0;
+      z-index: 1;
+      pointer-events: auto;
+      cursor: crosshair;
     }
     #info {
       position: absolute;
-      top: 10px;
-      right: 10px;
+      top: 10px; right: 10px;
       background: rgba(255,255,255,0.9);
       padding: 10px;
       border-radius: 5px;
-      font-family: Arial, sans-serif;
-      z-index: 1000;
+      font-family: Arial;
+      z-index: 2;
+    }
+    #debug {
+      position: absolute;
+      bottom: 10px; left: 10px;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 12px;
+      z-index: 2;
+      max-width: 300px;
     }
   </style>
 </head>
 <body>
-  <div id="map"></div>
-  <div id="info">
-    <div>Toplam Kutucuk: 2,000,000</div>
-    <div>Seçilen: <span id="selectedCount">0</span></div>
-    <div>Zoom: <span id="zoomLevel">2</span></div>
+  <div id="container">
+    <!-- Base64 encoded dünya haritası -->
+    <img id="mapImage" src="/static/app/map4.png" />
+    <canvas id="gridCanvas"></canvas>
+    <div id="info">
+      <div>Seçilen Hücre: <span id="selectedCount">0</span></div>
+      <div>Son Tıklama: <span id="lastClick">-</span></div>
+    </div>
+    <div id="debug">
+      <div id="debugText">Harita yükleniyor...</div>
+    </div>
   </div>
-  
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <script>
-    const map = L.map('map', {
-      maxBounds: [[-85, -180], [85, 180]],
-      maxBoundsViscosity: 1.0,
-      minZoom: 2,
-      maxZoom: 18
-    }).setView([39.9334, 32.8597], 6); // Türkiye merkezli başlangıç
+    const canvas = document.getElementById("gridCanvas");
+    const ctx = canvas.getContext("2d");
+    const selected = new Set();
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
-      noWrap: true
-    }).addTo(map);
+    const cols = 400;
+    const rows = 250;
 
-    const canvas = document.createElement('canvas');
-    canvas.id = 'gridCanvas';
-    const mapContainer = document.getElementById('map');
-    mapContainer.appendChild(canvas);
-    const ctx = canvas.getContext('2d');
+    const img = document.getElementById("mapImage");
+    const selectedCountEl = document.getElementById("selectedCount");
+    const lastClickEl = document.getElementById("lastClick");
+    const debugEl = document.getElementById("debugText");
 
-    // 2 milyon kutucuk için 2000x1000 grid
-    const gridCols = 2000;
-    const gridRows = 1000;
+    let imageDataCanvas = null;
+    let imageCtx = null;
+    let imageData = null;
 
-    // Dünya koordinat sınırları
-    const minLat = -85;
-    const maxLat = 85;
-    const minLng = -180;
-    const maxLng = 180;
-
-    // Her kutucuğun coğrafi boyutları
-    const latStep = (maxLat - minLat) / gridRows; // 0.17 derece
-    const lngStep = (maxLng - minLng) / gridCols; // 0.18 derece
-
-    const selectedCells = new Set();
-
-    function resizeCanvas() {
-      const size = map.getSize();
-      canvas.width = size.x;
-      canvas.height = size.y;
-      canvas.style.width = size.x + 'px';
-      canvas.style.height = size.y + 'px';
+    function resize() {
+      canvas.width = img.clientWidth;
+      canvas.height = img.clientHeight;
+      
+      if (imageDataCanvas === null) {
+        imageDataCanvas = document.createElement("canvas");
+        imageDataCanvas.width = img.naturalWidth;
+        imageDataCanvas.height = img.naturalHeight;
+        imageCtx = imageDataCanvas.getContext("2d");
+      }
+      
+      imageCtx.clearRect(0, 0, imageDataCanvas.width, imageDataCanvas.height);
+      imageCtx.drawImage(img, 0, 0, imageDataCanvas.width, imageDataCanvas.height);
+      
+      // Tüm image data'yı bir kez al
+      imageData = imageCtx.getImageData(0, 0, imageDataCanvas.width, imageDataCanvas.height);
+      
+      debugEl.textContent = `Harita: ${imageDataCanvas.width}x${imageDataCanvas.height} | Canvas: ${canvas.width}x${canvas.height}`;
+      
+      draw();
     }
 
-    function drawGrid() {
-      resizeCanvas();
+    function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const cellW = canvas.width / cols;
+      const cellH = canvas.height / rows;
 
-      const bounds = map.getBounds();
-      const north = bounds.getNorth();
-      const south = bounds.getSouth();
-      const west = bounds.getWest();
-      const east = bounds.getEast();
-
-      // Görünür hücrelerin aralığı
-      const startRow = Math.max(0, Math.floor((maxLat - north) / latStep));
-      const endRow = Math.min(gridRows - 1, Math.ceil((maxLat - south) / latStep));
-      const startCol = Math.max(0, Math.floor((west - minLng) / lngStep));
-      const endCol = Math.min(gridCols - 1, Math.ceil((east - minLng) / lngStep));
-
-      const zoom = map.getZoom();
-      
-      // Zoom seviyesine göre grid çizgilerinin sıklığını ayarla
-      let gridStep = 100;
-      if (zoom > 8) gridStep = 50;
-      if (zoom > 12) gridStep = 25;
-      if (zoom > 15) gridStep = 10;
-
-      // Grid çizgileri
-      ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-      ctx.lineWidth = 0.5;
-
-      // Yatay çizgiler (enlemler)
-      for (let r = startRow; r <= endRow; r++) {
-        if (r % gridStep === 0) {
-          const lat = maxLat - r * latStep;
-          const p1 = map.latLngToContainerPoint([lat, west]);
-          const p2 = map.latLngToContainerPoint([lat, east]);
-          
-          if (p1.y >= 0 && p1.y <= canvas.height) {
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Dikey çizgiler (boylamlar)
-      for (let c = startCol; c <= endCol; c++) {
-        if (c % gridStep === 0) {
-          const lng = minLng + c * lngStep;
-          const p1 = map.latLngToContainerPoint([north, lng]);
-          const p2 = map.latLngToContainerPoint([south, lng]);
-          
-          if (p1.x >= 0 && p1.x <= canvas.width) {
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Seçilen hücreleri çiz
-      ctx.fillStyle = 'rgba(34,197,94,0.6)';
-      ctx.strokeStyle = 'rgba(34,197,94,0.8)';
+      ctx.fillStyle = "rgba(34,197,94,0.6)";
+      ctx.strokeStyle = "rgba(34,197,94,0.8)";
       ctx.lineWidth = 1;
 
-      selectedCells.forEach(key => {
-        const [col, row] = key.split(',').map(Number);
-
-        if (row < startRow || row > endRow || col < startCol || col > endCol) return;
-
-        // Kutucuğun köşe koordinatları
-        const lat1 = maxLat - row * latStep;
-        const lng1 = minLng + col * lngStep;
-        const lat2 = lat1 - latStep;
-        const lng2 = lng1 + lngStep;
-
-        // Piksel koordinatları
-        const topLeft = map.latLngToContainerPoint([lat1, lng1]);
-        const bottomRight = map.latLngToContainerPoint([lat2, lng2]);
-
-        const width = bottomRight.x - topLeft.x;
-        const height = bottomRight.y - topLeft.y;
-
-        // Kutucuk görünür alanda mı kontrol et
-        if (topLeft.x < canvas.width && bottomRight.x > 0 && 
-            topLeft.y < canvas.height && bottomRight.y > 0) {
-          
-          ctx.fillRect(topLeft.x, topLeft.y, width, height);
-          
-          // Zoom seviyesi yüksekse kenarlık çiz
-          if (zoom > 10) {
-            ctx.strokeRect(topLeft.x, topLeft.y, width, height);
-          }
+      selected.forEach(key => {
+        const [x, y] = key.split(',').map(Number);
+        ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+        if (canvas.width > 1000) {
+          ctx.strokeRect(x * cellW, y * cellH, cellW, cellH);
         }
       });
 
-      // UI güncellemesi
-      document.getElementById('selectedCount').textContent = selectedCells.size.toLocaleString();
-      document.getElementById('zoomLevel').textContent = zoom;
+      selectedCountEl.textContent = selected.size;
     }
 
-    // Tile layer canvas'ını almak için yardımcı fonksiyon
-    function getTileCanvas() {
-      const panes = map.getPanes();
-      const tilePane = panes.tilePane;
-      const canvases = tilePane.querySelectorAll('canvas');
-      return canvases.length > 0 ? canvases[0] : null;
-    }
+    function isLandCell(col, row) {
+      if (!imageData) return false;
 
-    // Mavi pixel kontrolü
-    function isBluePixel(x, y) {
-      try {
-        // Ana harita canvas'ını bul
-        const mapCanvas = getTileCanvas();
-        if (!mapCanvas) return false;
+      const x = Math.floor((col + 0.5) * (imageDataCanvas.width / cols));
+      const y = Math.floor((row + 0.5) * (imageDataCanvas.height / rows));
 
-        const ctx = mapCanvas.getContext('2d');
-        const imageData = ctx.getImageData(x, y, 1, 1);
-        const [r, g, b, a] = imageData.data;
-
-        // Mavi tonları kontrolü (deniz renkleri)
-        // Mavi bileşen > kırmızı ve yeşil bileşen
-        const isBluish = b > r && b > g && b > 100;
-        
-        // Açık mavi tonları (deniz)
-        const isLightBlue = b > 150 && g > 120 && r < 200;
-        
-        // Koyu mavi tonları (derin deniz)
-        const isDarkBlue = b > 80 && r < 100 && g < 100;
-
-        return isBluish || isLightBlue || isDarkBlue;
-      } catch (e) {
-        console.warn('Pixel okuma hatası:', e);
+      // Sınır kontrolü
+      if (x < 0 || x >= imageDataCanvas.width || y < 0 || y >= imageDataCanvas.height) {
         return false;
       }
+
+      const index = (y * imageDataCanvas.width + x) * 4;
+      const r = imageData.data[index];
+      const g = imageData.data[index + 1];
+      const b = imageData.data[index + 2];
+
+      const brightness = (r + g + b) / 3;
+      
+      // Debug bilgisi göster
+      debugEl.innerHTML = `
+        Hücre: (${col}, ${row})<br>
+        Piksel: (${x}, ${y})<br>
+        RGB: (${r}, ${g}, ${b})<br>
+        Brightness: ${brightness.toFixed(1)}<br>
+        ${brightness > 100 ? '🏔️ KARA' : '🌊 DENİZ'}
+      `;
+
+      // Brightness > 100 olan alanlar kara (seçilebilir)
+      return brightness > 100;
     }
 
-    // Alternatif: Harita tile verilerini kontrol et
-    function isWaterArea(lat, lng) {
-      // Basit koordinat kontrolü (yedek sistem)
-      // Çok büyük okyanus alanları
-      if (lat < -60 || lat > 75) return true;
-      
-      // Büyük Pasifik alanları
-      if (lat > -30 && lat < 30) {
-        if (lng > -160 && lng < -120) return true; // Pasifik
-        if (lng > 160 && lng < 180) return true;   // Pasifik
-      }
-      
-      return false;
-    }
-
-    // Tıklama işlemi
-    map.getContainer().addEventListener('click', e => {
-      const rect = map.getContainer().getBoundingClientRect();
+    canvas.addEventListener("click", e => {
+      const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      const latlng = map.containerPointToLatLng(L.point(x, y));
-
-      // Önce pixel rengini kontrol et
-      if (isBluePixel(x, y)) {
-        console.log('Mavi alan (deniz) seçilemez!');
-        return;
-      }
-
-      // Yedek kontrol
-      if (isWaterArea(latlng.lat, latlng.lng)) {
-        console.log('Su alanı seçilemez!');
-        return;
-      }
-
-      // Grid hücresini hesapla
-      const row = Math.floor((maxLat - latlng.lat) / latStep);
-      const col = Math.floor((latlng.lng - minLng) / lngStep);
-
-      if (col < 0 || col >= gridCols || row < 0 || row >= gridRows) return;
-
+      const col = Math.floor((x / canvas.width) * cols);
+      const row = Math.floor((y / canvas.height) * rows);
       const key = `${col},${row}`;
 
-      if (selectedCells.has(key)) {
-        selectedCells.delete(key);
-      } else {
-        selectedCells.add(key);
+      lastClickEl.textContent = `(${col}, ${row})`;
+
+      if (!isLandCell(col, row)) {
+        console.log("🌊 Bu hücre deniz, seçilemez.");
+        return;
       }
 
-      drawGrid();
-      
-      // Seçilen hücrenin bilgilerini konsola yazdır
-      const lat = maxLat - row * latStep;
-      const lng = minLng + col * lngStep;
-      console.log(`Hücre: ${key}, Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
+      if (selected.has(key)) {
+        selected.delete(key);
+        console.log("❌ Hücre seçimi kaldırıldı:", key);
+      } else {
+        selected.add(key);
+        console.log("✅ Hücre seçildi:", key);
+      }
+
+      draw();
     });
 
-    // Harita olayları
-    map.on('move zoom resize', drawGrid);
-    map.whenReady(drawGrid);
+    // Mouse hareket ettiğinde hangi hücrenin üzerinde olduğunu göster
+    canvas.addEventListener("mousemove", e => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
 
-    // Başlangıçta grid çiz
-    setTimeout(drawGrid, 100);
+      const col = Math.floor((x / canvas.width) * cols);
+      const row = Math.floor((y / canvas.height) * rows);
+
+      if (col >= 0 && col < cols && row >= 0 && row < rows) {
+        isLandCell(col, row); // Bu debug bilgisini günceller
+      }
+    });
+
+    window.addEventListener("resize", resize);
+    img.addEventListener("load", resize);
   </script>
 </body>
 </html>
