@@ -5,28 +5,46 @@
   <title>Harita Seçimi (Antrasit)</title>
   <style>
     html, body {
-      margin: 0; padding: 0;
+      margin: 0;
+      padding: 0;
       overflow: hidden;
       height: 100%;
-      background: #111;
+      
+      background: #0A1019;
+background-image: url("https://www.transparenttextures.com/patterns/stardust.png");
+        
+
     }
+
+    #mapImage {
+  -webkit-mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+  mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+}
+
     #container {
       position: relative;
       width: 100%;
       height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #mapContainer {
+      position: relative;
+      max-width: 100%;
+      max-height: 100%;
     }
     #mapImage {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      z-index: 0;
+      display: block;
+      max-width: 100%;
+      max-height: 100vh;
+      object-fit: contain;
+      background: #333;
     }
     #gridCanvas {
       position: absolute;
-      top: 0; left: 0;
-      z-index: 1;
+      top: 0; 
+      left: 0;
       pointer-events: auto;
       cursor: crosshair;
     }
@@ -55,9 +73,10 @@
 </head>
 <body>
   <div id="container">
-    <!-- Base64 encoded dünya haritası -->
-    <img id="mapImage" src="/static/app/map4.png" />
-    <canvas id="gridCanvas"></canvas>
+    <div id="mapContainer">
+      <img id="mapImage" src="/static/app/map5.png" />
+      <canvas id="gridCanvas"></canvas>
+    </div>
     <div id="info">
       <div>Seçilen Hücre: <span id="selectedCount">0</span></div>
       <div>Son Tıklama: <span id="lastClick">-</span></div>
@@ -72,8 +91,8 @@
     const ctx = canvas.getContext("2d");
     const selected = new Set();
 
-    const cols = 400;
-    const rows = 250;
+    const cols = 1000;
+    const rows = 1000;
 
     const img = document.getElementById("mapImage");
     const selectedCountEl = document.getElementById("selectedCount");
@@ -85,24 +104,24 @@
     let imageData = null;
 
     function resize() {
-      canvas.width = img.clientWidth;
-      canvas.height = img.clientHeight;
-      
-      if (imageDataCanvas === null) {
+      // Canvas boyutunu img elementinin gerçek görüntülenen boyutuna eşitle
+      const imgRect = img.getBoundingClientRect();
+      canvas.width = imgRect.width;
+      canvas.height = imgRect.height;
+
+      // Görüntü verilerini analiz etmek için ayrı canvas
+      if (!imageDataCanvas && img.naturalWidth > 0) {
         imageDataCanvas = document.createElement("canvas");
         imageDataCanvas.width = img.naturalWidth;
         imageDataCanvas.height = img.naturalHeight;
         imageCtx = imageDataCanvas.getContext("2d");
+        
+        // Görüntüyü imageDataCanvas'a çiz
+        imageCtx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
+        imageData = imageCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
       }
-      
-      imageCtx.clearRect(0, 0, imageDataCanvas.width, imageDataCanvas.height);
-      imageCtx.drawImage(img, 0, 0, imageDataCanvas.width, imageDataCanvas.height);
-      
-      // Tüm image data'yı bir kez al
-      imageData = imageCtx.getImageData(0, 0, imageDataCanvas.width, imageDataCanvas.height);
-      
-      debugEl.textContent = `Harita: ${imageDataCanvas.width}x${imageDataCanvas.height} | Canvas: ${canvas.width}x${canvas.height}`;
-      
+
+      debugEl.textContent = `Harita: ${img.naturalWidth}x${img.naturalHeight} | Canvas: ${canvas.width}x${canvas.height} | Görüntülenen: ${Math.round(imgRect.width)}x${Math.round(imgRect.height)}`;
       draw();
     }
 
@@ -118,7 +137,7 @@
       selected.forEach(key => {
         const [x, y] = key.split(',').map(Number);
         ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
-        if (canvas.width > 1000) {
+        if (canvas.width > 500) { // Grid çizgilerini sadece yeterli boyutta göster
           ctx.strokeRect(x * cellW, y * cellH, cellW, cellH);
         }
       });
@@ -127,34 +146,39 @@
     }
 
     function isLandCell(col, row) {
-      if (!imageData) return false;
+      if (!imageData || !imageDataCanvas) return true; // Eğer görüntü yüklenmemişse her yeri seçilebilir say
+      
+      const pixelList = [
+        [0, 0],
+        [-1, 0],
+        [1, 0],
+        [0, -1],
+        [0, 1]
+      ];
 
-      const x = Math.floor((col + 0.5) * (imageDataCanvas.width / cols));
-      const y = Math.floor((row + 0.5) * (imageDataCanvas.height / rows));
+      let totalBrightness = 0;
+      let validCount = 0;
 
-      // Sınır kontrolü
-      if (x < 0 || x >= imageDataCanvas.width || y < 0 || y >= imageDataCanvas.height) {
-        return false;
+      for (const [dx, dy] of pixelList) {
+        const sampleX = Math.floor((col + 0.5 + dx) * (imageDataCanvas.width / cols));
+        const sampleY = Math.floor((row + 0.5 + dy) * (imageDataCanvas.height / rows));
+
+        if (sampleX < 0 || sampleX >= imageDataCanvas.width ||
+            sampleY < 0 || sampleY >= imageDataCanvas.height) continue;
+
+        const index = (sampleY * imageDataCanvas.width + sampleX) * 4;
+        const r = imageData.data[index];
+        const g = imageData.data[index + 1];
+        const b = imageData.data[index + 2];
+
+        const brightness = (r + g + b) / 3;
+        totalBrightness += brightness;
+        validCount++;
       }
 
-      const index = (y * imageDataCanvas.width + x) * 4;
-      const r = imageData.data[index];
-      const g = imageData.data[index + 1];
-      const b = imageData.data[index + 2];
-
-      const brightness = (r + g + b) / 3;
-      
-      // Debug bilgisi göster
-      debugEl.innerHTML = `
-        Hücre: (${col}, ${row})<br>
-        Piksel: (${x}, ${y})<br>
-        RGB: (${r}, ${g}, ${b})<br>
-        Brightness: ${brightness.toFixed(1)}<br>
-        ${brightness > 100 ? '🏔️ KARA' : '🌊 DENİZ'}
-      `;
-
-      // Brightness > 100 olan alanlar kara (seçilebilir)
-      return brightness > 100;
+      if (validCount === 0) return false;
+      const avgBrightness = totalBrightness / validCount;
+      return avgBrightness > 100; // eşik
     }
 
     canvas.addEventListener("click", e => {
@@ -184,7 +208,6 @@
       draw();
     });
 
-    // Mouse hareket ettiğinde hangi hücrenin üzerinde olduğunu göster
     canvas.addEventListener("mousemove", e => {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -194,12 +217,31 @@
       const row = Math.floor((y / canvas.height) * rows);
 
       if (col >= 0 && col < cols && row >= 0 && row < rows) {
-        isLandCell(col, row); // Bu debug bilgisini günceller
+        // Mouse pozisyonu debug bilgisi için kullanılabilir
       }
     });
 
+    // Görüntü yüklendiğinde resize çağır
+    img.addEventListener("load", () => {
+      console.log("Görüntü yüklendi:", img.naturalWidth, "x", img.naturalHeight);
+      resize();
+    });
+
+    // Pencere boyutu değiştiğinde resize çağır
     window.addEventListener("resize", resize);
-    img.addEventListener("load", resize);
+
+    // ResizeObserver ile img elementinin boyut değişikliklerini izle
+    if (window.ResizeObserver) {
+      const resizeObserver = new ResizeObserver(entries => {
+        resize();
+      });
+      resizeObserver.observe(img);
+    }
+
+    // Sayfa yüklendiğinde başlat
+    window.addEventListener("load", () => {
+      resize();
+    });
   </script>
 </body>
 </html>
