@@ -111,7 +111,7 @@
     let imageOffsetX = 0;
     let imageOffsetY = 0;
 
-    // Sürükleme seçimi değişkenleri
+    
     let isDragging = false;
     let dragStartX = 0;
     let dragStartY = 0;
@@ -119,35 +119,35 @@
     let dragCurrentY = 0;
 
     function resize() {
-      // Canvas boyutunu viewport'a eşitle
+     
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
 
-      // object-fit: cover için scaling hesaplaması
+     
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
         const containerAspect = canvas.width / canvas.height;
         const imageAspect = img.naturalWidth / img.naturalHeight;
         
         if (containerAspect > imageAspect) {
-          // Container daha geniş, görüntü genişliğe sığdırılır
+        
           imageScale = canvas.width / img.naturalWidth;
           imageOffsetX = 0;
           imageOffsetY = (canvas.height - (img.naturalHeight * imageScale)) / 2;
         } else {
-          // Container daha dar, görüntü yüksekliğe sığdırılır
+        
           imageScale = canvas.height / img.naturalHeight;
           imageOffsetX = (canvas.width - (img.naturalWidth * imageScale)) / 2;
           imageOffsetY = 0;
         }
 
-        // Görüntü verilerini analiz etmek için ayrı canvas
+        
         if (!imageDataCanvas) {
           imageDataCanvas = document.createElement("canvas");
           imageDataCanvas.width = img.naturalWidth;
           imageDataCanvas.height = img.naturalHeight;
           imageCtx = imageDataCanvas.getContext("2d");
           
-          // Görüntüyü imageDataCanvas'a çiz
+       
           imageCtx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
           imageData = imageCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
         }
@@ -160,19 +160,19 @@
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Görüntünün görünür alanını hesapla
+      
       const visibleWidth = img.naturalWidth * imageScale;
       const visibleHeight = img.naturalHeight * imageScale;
       
       const cellW = visibleWidth / cols;
       const cellH = visibleHeight / rows;
 
-      // Grid çizgilerini çiz (önce grid, sonra seçimler)
-      if (cellW > 2 && cellH > 2) { // Çok küçük hücreler için grid çizme
+      
+      if (cellW > 2 && cellH > 2) {
         ctx.strokeStyle = "rgba(255,255,255,0.3)";
         ctx.lineWidth = 0.5;
         
-        // Dikey çizgiler (sütunlar)
+      
         for (let x = 0; x <= cols; x++) {
           const screenX = imageOffsetX + (x * cellW);
           if (screenX >= 0 && screenX <= canvas.width) {
@@ -183,7 +183,7 @@
           }
         }
         
-        // Yatay çizgiler (satırlar)
+       
         for (let y = 0; y <= rows; y++) {
           const screenY = imageOffsetY + (y * cellH);
           if (screenY >= 0 && screenY <= canvas.height) {
@@ -195,7 +195,7 @@
         }
       }
 
-      // Seçili hücreleri çiz
+    
       ctx.fillStyle = "rgba(34,197,94,0.6)";
       ctx.strokeStyle = "rgba(34,197,94,0.8)";
       ctx.lineWidth = 1;
@@ -205,7 +205,7 @@
         const screenX = imageOffsetX + (x * cellW);
         const screenY = imageOffsetY + (y * cellH);
         
-        // Sadece görünür alanda olan hücreleri çiz
+      
         if (screenX + cellW > 0 && screenX < canvas.width && 
             screenY + cellH > 0 && screenY < canvas.height) {
           ctx.fillRect(screenX, screenY, cellW, cellH);
@@ -213,7 +213,7 @@
         }
       });
 
-      // Sürükleme kutusunu çiz
+    
       if (isDragging) {
         const minX = Math.min(dragStartX, dragCurrentX);
         const minY = Math.min(dragStartY, dragCurrentY);
@@ -232,7 +232,7 @@
     }
 
     function screenToGrid(screenX, screenY) {
-      // Ekran koordinatlarını grid koordinatlarına dönüştür
+     
       const imageX = (screenX - imageOffsetX) / imageScale;
       const imageY = (screenY - imageOffsetY) / imageScale;
       
@@ -298,7 +298,7 @@
       }
     }
 
-    // Mouse event listeners
+    
     canvas.addEventListener("mousedown", e => {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -321,11 +321,11 @@
       if (isDragging) {
         dragCurrentX = x;
         dragCurrentY = y;
-        draw(); // Sürükleme kutusunu göstermek için yeniden çiz
+        draw(); 
       }
 
       const [col, row] = screenToGrid(x, y);
-      // Mouse pozisyonu debug bilgisi için kullanılabilir
+     
     });
 
     canvas.addEventListener("mouseup", e => {
@@ -334,11 +334,11 @@
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         
-        // Eğer çok küçük bir hareket ise tek hücre seçimi yap
+       
         const dragDistance = Math.abs(x - dragStartX) + Math.abs(y - dragStartY);
         
         if (dragDistance < 5) {
-          // Tek tıklama gibi davran
+         
           const [col, row] = screenToGrid(x, y);
           const key = `${col},${row}`;
           
@@ -356,7 +356,7 @@
             }
           }
         } else {
-          // Kutu seçimi yap
+         
           selectRectangleArea(dragStartX, dragStartY, x, y);
           console.log("📦 Kutu alanı seçildi");
         }
@@ -366,7 +366,7 @@
       }
     });
 
-    // Canvas dışına çıkarsa sürüklemeyi iptal et
+  
     canvas.addEventListener("mouseleave", e => {
       if (isDragging) {
         isDragging = false;
@@ -374,16 +374,16 @@
       }
     });
 
-    // Görüntü yüklendiğinde resize çağır
+    
     img.addEventListener("load", () => {
       console.log("Görüntü yüklendi:", img.naturalWidth, "x", img.naturalHeight);
       resize();
     });
 
-    // Pencere boyutu değiştiğinde resize çağır
+    
     window.addEventListener("resize", resize);
 
-    // Sayfa yüklendiğinde başlat
+   
     window.addEventListener("load", () => {
       resize();
     });
