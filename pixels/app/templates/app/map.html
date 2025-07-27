@@ -96,8 +96,8 @@
     const ctx = canvas.getContext("2d");
     const selected = new Set();
 
-    const cols = 1000;
-    const rows = 1000;
+    const cols = 400; // 400 sütun
+    const rows = 250;
 
     const img = document.getElementById("mapImage");
     const selectedCountEl = document.getElementById("selectedCount");
@@ -168,9 +168,9 @@
       const cellH = visibleHeight / rows;
 
       
-      if (cellW > 2 && cellH > 2) {
-        ctx.strokeStyle = "rgba(255,255,255,0.3)";
-        ctx.lineWidth = 0.5;
+      if (cellW > 1 && cellH > 1) {
+        ctx.strokeStyle = "rgba(255,255,255,0.8)"; // Daha görünür beyaz
+        ctx.lineWidth = 1; // Daha kalın çizgi
         
       
         for (let x = 0; x <= cols; x++) {
@@ -329,42 +329,56 @@
     });
 
     canvas.addEventListener("mouseup", e => {
-      if (isDragging) {
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        
-       
-        const dragDistance = Math.abs(x - dragStartX) + Math.abs(y - dragStartY);
-        
-        if (dragDistance < 5) {
-         
-          const [col, row] = screenToGrid(x, y);
-          const key = `${col},${row}`;
-          
-          lastClickEl.textContent = `(${col}, ${row})`;
+  if (isDragging) {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
-          if (!isLandCell(col, row)) {
-            console.log("🌊 Bu hücre deniz veya sınır dışı, seçilemez.");
-          } else {
-            if (selected.has(key)) {
-              selected.delete(key);
-              console.log("❌ Hücre seçimi kaldırıldı:", key);
-            } else {
-              selected.add(key);
-              console.log("✅ Hücre seçildi:", key);
-            }
-          }
+    const dragDistance = Math.abs(x - dragStartX) + Math.abs(y - dragStartY);
+
+    if (dragDistance < 5) {
+      // Tek tıklama
+      const [col, row] = screenToGrid(x, y);
+      const key = `${col},${row}`;
+      lastClickEl.textContent = `(${col}, ${row})`;
+
+      if (!isLandCell(col, row)) {
+        console.log("🌊 Bu hücre deniz veya sınır dışı, seçilemez.");
+      } else {
+        if (selected.has(key)) {
+          selected.delete(key);
+          console.log("❌ Hücre seçimi kaldırıldı:", key);
         } else {
-         
-          selectRectangleArea(dragStartX, dragStartY, x, y);
-          console.log("📦 Kutu alanı seçildi");
+          selected.add(key);
+          console.log("✅ Hücre seçildi:", key);
         }
-        
-        isDragging = false;
-        draw();
       }
-    });
+    } else {
+      
+      const selectedKeys = selectRectangleArea(dragStartX, dragStartY, x, y); 
+      console.log("📦 Kutu alanı seçildi");
+
+      selectedKeys.forEach(key => {
+        const [col, row] = key.split(",").map(Number);
+        if (!isLandCell(col, row)) {
+          console.log("🌊 Alan içinde deniz/sınır dışı hücre atlandı:", key);
+          return;
+        }
+
+        if (selected.has(key)) {
+          selected.delete(key);
+          console.log("❌ Kutu seçimi kaldırıldı:", key);
+        } else {
+          selected.add(key);
+          console.log("✅ Hücre seçildi:", key);
+        }
+      });
+    }
+
+    isDragging = false;
+    draw();
+  }
+});
 
   
     canvas.addEventListener("mouseleave", e => {
