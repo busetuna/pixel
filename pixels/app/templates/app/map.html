@@ -2,6 +2,7 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <title>Harita Seçimi (Tam Ekran)</title>
   <style>
     html, body {
@@ -74,6 +75,26 @@
       z-index: 2;
       max-width: 300px;
     }
+    
+    #purchaseBtn {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #10B981;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      z-index: 10;
+      display: none;
+    }
+    
+    #purchaseBtn:hover {
+      background-color: #0D9F6E;
+    }
+    
   </style>
 </head>
 <body>
@@ -89,12 +110,17 @@
     <div id="debug">
       <div id="debugText">Harita yükleniyor...</div>
     </div>
+    <button id="purchaseBtn">
+      ✅ Satın Al
+    </button>
   </div>
 
   <script>
     const canvas = document.getElementById("gridCanvas");
     const ctx = canvas.getContext("2d");
     const selected = new Set();
+    const purchaseBtn = document.getElementById("purchaseBtn");
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
     const cols = 400; // 400 sütun
     const rows = 250;
@@ -229,6 +255,11 @@
       }
 
       selectedCountEl.textContent = selected.size;
+      updatePurchaseButtonVisibility();
+    }
+
+    function updatePurchaseButtonVisibility() {
+      purchaseBtn.style.display = selected.size > 0 ? "block" : "none";
     }
 
     function screenToGrid(screenX, screenY) {
@@ -278,6 +309,23 @@
       const avgBrightness = totalBrightness / validCount;
       return avgBrightness > 100;
     }
+    function colorCellGreen(key) {
+  const [col, row] = key.split(',').map(Number);
+  const cellElement = document.getElementById(`cell-${col}-${row}`);
+  if (cellElement) {
+    cellElement.style.backgroundColor = 'green';
+    cellElement.style.pointerEvents = 'none';
+    cellElement.style.opacity = '0.7';
+  }
+}
+fetch('/api/purchased-cells')
+  .then(res => res.json())
+  .then(data => {
+    purchasedCells = new Set(data.cells);
+    for (const key of purchasedCells) {
+      colorCellGreen(key);
+    }
+  });
 
     function selectRectangleArea(startX, startY, endX, endY) {
       const [startCol, startRow] = screenToGrid(startX, startY);
@@ -329,56 +377,40 @@
     });
 
     canvas.addEventListener("mouseup", e => {
-  if (isDragging) {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+      if (isDragging) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
 
-    const dragDistance = Math.abs(x - dragStartX) + Math.abs(y - dragStartY);
+        const dragDistance = Math.abs(x - dragStartX) + Math.abs(y - dragStartY);
 
-    if (dragDistance < 5) {
-      // Tek tıklama
-      const [col, row] = screenToGrid(x, y);
-      const key = `${col},${row}`;
-      lastClickEl.textContent = `(${col}, ${row})`;
+        if (dragDistance < 5) {
+          // Tek tıklama
+          const [col, row] = screenToGrid(x, y);
+          const key = `${col},${row}`;
+          lastClickEl.textContent = `(${col}, ${row})`;
 
-      if (!isLandCell(col, row)) {
-        console.log("🌊 Bu hücre deniz veya sınır dışı, seçilemez.");
-      } else {
-        if (selected.has(key)) {
-          selected.delete(key);
-          console.log("❌ Hücre seçimi kaldırıldı:", key);
+          if (!isLandCell(col, row)) {
+            console.log("🌊 Bu hücre deniz veya sınır dışı, seçilemez.");
+          } else {
+            if (selected.has(key)) {
+              selected.delete(key);
+              console.log("❌ Hücre seçimi kaldırıldı:", key);
+            } else {
+              selected.add(key);
+              console.log("✅ Hücre seçildi:", key);
+            }
+          }
         } else {
-          selected.add(key);
-          console.log("✅ Hücre seçildi:", key);
+          // Kutu seçimi
+          selectRectangleArea(dragStartX, dragStartY, x, y); 
+          console.log("📦 Kutu alanı seçildi");
         }
+
+        isDragging = false;
+        draw();
       }
-    } else {
-      
-      const selectedKeys = selectRectangleArea(dragStartX, dragStartY, x, y); 
-      console.log("📦 Kutu alanı seçildi");
-
-      selectedKeys.forEach(key => {
-        const [col, row] = key.split(",").map(Number);
-        if (!isLandCell(col, row)) {
-          console.log("🌊 Alan içinde deniz/sınır dışı hücre atlandı:", key);
-          return;
-        }
-
-        if (selected.has(key)) {
-          selected.delete(key);
-          console.log("❌ Kutu seçimi kaldırıldı:", key);
-        } else {
-          selected.add(key);
-          console.log("✅ Hücre seçildi:", key);
-        }
-      });
-    }
-
-    isDragging = false;
-    draw();
-  }
-});
+    });
 
   
     canvas.addEventListener("mouseleave", e => {
@@ -388,6 +420,116 @@
       }
     });
 
+    // Satın al butonuna tıklama
+    purchaseBtn.addEventListener("click", async () => {
+      if (selected.size === 0) {
+        alert("Lütfen önce hücre seçin.");
+        return;
+      }
+
+      const cellsArray = Array.from(selected);
+
+      try {
+        const saveRes = await fetch("/api/save-selection", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" ,
+    "X-CSRFToken": csrfToken // CSRF token ekle
+  },
+  body: JSON.stringify({ cells: cellsArray })
+});
+
+const saveText = await saveRes.text(); // ilk olarak text al
+if (!saveRes.ok) {
+  console.error("❌ Hata cevabı:", saveText);
+  alert("Hata: " + saveText);
+  return;
+}
+
+const saveData = JSON.parse(saveText);
+
+        if (!saveRes.ok) {
+          alert("❌ Hücreleri kaydederken hata oluştu:\n" + (saveData.detail || saveData.message));
+          return;
+        }
+
+        console.log("✅ Hücreler kaydedildi:", saveData);
+let selectedCells = new Set();
+
+try {
+  const purchaseRes = await fetch("/api/purchase", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": csrfToken
+    },
+    credentials: "same-origin",
+    body: JSON.stringify({
+      logo_url: "https://example.com/logo.png"
+    })
+  });
+
+  const result = await purchaseRes.json();  // ✅ sadece bir kez .json()
+
+  if (purchaseRes.ok && result.status === "success") {
+    // 🎉 Kullanıcıya mesaj göster
+    alert("🎉 Satın alma başarılı!\n" + result.message);
+
+    // ✅ Satın alınan hücreleri yeşile boya
+    for (const cell of result.cells) {
+      purchasedCells.add(cell);
+      colorCellGreen(cell);
+    }
+
+    // 🧹 Seçimi temizle
+    selectedCells.clear(); // ← Set kullandığını varsayıyorum
+    draw(); // varsa grid'i yeniden çiz
+
+  } else {
+    // ❌ Hata varsa kullanıcıya mesaj göster
+    alert("❌ Satın alma başarısız:\n" + (result.error || "Hata oluştu"));
+    console.log("Satın alma hatası:", result);
+  }
+
+} catch (err) {
+  alert("❌ Sunucuya erişilemedi: " + err.message);
+  console.error("Fetch hatası:", err);
+}
+
+
+const result = await purchaseRes.json();
+
+if (result.status === "success") {
+  // 🎯 Yeni satın alınan hücreleri Set'e ekle
+  for (const cell of result.cells) {
+    purchasedCells.add(cell);  // "10,12" gibi
+    colorCellGreen(cell);      // Haritada yeşil boya
+  }
+
+  // 🧹 Seçili hücreleri temizle (istersen)
+  selectedCells.clear();
+  //updateUI();
+} else {
+  alert("❌ " + (result.error || "Satın alma başarısız"));
+}
+
+
+
+        const purchaseData = await purchaseRes.json();
+
+        if (purchaseRes.ok) {
+          alert("🎉 Satın alma başarılı!\n" + purchaseData.message);
+          selected.clear();
+          draw();
+        } else {
+          alert("❌ Satın alma başarısız:\n" + (purchaseData.error || "Hata"));
+          console.log("Satın alma hatası:", purchaseData);
+        }
+
+      } catch (err) {
+        alert("❌ Sunucuya erişilemedi: " + err.message);
+        console.error("Fetch hatası:", err);
+      }
+    });
     
     img.addEventListener("load", () => {
       console.log("Görüntü yüklendi:", img.naturalWidth, "x", img.naturalHeight);
