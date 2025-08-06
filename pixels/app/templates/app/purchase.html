@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>Satın Alma - Logo Yükleme</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            padding: 30px;
+            text-align: center;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .selected-info {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border-left: 5px solid #4facfe;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #4facfe;
+            box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+        }
+
+        .file-upload {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-upload input[type=file] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-upload-btn {
+            display: block;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            font-size: 16px;
+            transition: transform 0.2s ease;
+        }
+
+        .file-upload-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .preview-container {
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .logo-preview {
+            max-width: 200px;
+            max-height: 200px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin: 10px;
+        }
+
+        .price-info {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .price-info h3 {
+            color: #d63031;
+            font-size: 1.8em;
+            margin-bottom: 10px;
+        }
+
+        .cell-list {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .cell-item {
+            display: inline-block;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 5px 10px;
+            border-radius: 15px;
+            margin: 2px;
+            font-size: 12px;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            margin-right: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .button-container {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #eee;
+        }
+
+        .info-box {
+            background: #e8f5e8;
+            border: 1px solid #c3e6c3;
+            color: #2d5a2d;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Satın Alma İşlemi</h1>
+            <div class="selected-info">
+                <h3>📍 Seçilen Hücre Sayısı: <span id="cellCount">0</span></h3>
+                <p>Seçtiğiniz hücrelere logo yükleyebilir ve satın alma işlemini tamamlayabilirsiniz</p>
+            </div>
+        </div>
+
+        <div class="content">
+            <!-- Hücre Bilgileri -->
+            <div class="section">
+                <h2>📋 Seçilen Hücreler</h2>
+                <div id="cellList" class="cell-list">
+                    <!-- Hücreler buraya dinamik olarak eklenecek -->
+                </div>
+            </div>
+
+            <!-- Fiyat Bilgisi -->
+            <div class="price-info">
+                <h3>💰 Toplam Fiyat: <span id="totalPrice">0</span> TL</h3>
+                <p>Hücre başına 10 TL</p>
+            </div>
+
+            <!-- Logo Yükleme -->
+            <div class="section">
+                <h2>🎨 Logo Yükleme</h2>
+                <div class="info-box">
+                    <strong>ℹ️ Bilgi:</strong> Yüklediğiniz logo tüm seçilen hücrelerde görüntülenecektir. 
+                    Desteklenen formatlar: JPG, PNG, SVG (Max 2MB)
+                </div>
+                
+                <div class="form-group">
+                    <label for="logoFile">Logo Dosyası Seçin:</label>
+                    <div class="file-upload">
+                        <input type="file" id="logoFile" accept="image/*" />
+                        <div class="file-upload-btn">
+                            📁 Logo Dosyası Seç
+                        </div>
+                    </div>
+                </div>
+
+                <div class="preview-container" id="previewContainer" style="display: none;">
+                    <p><strong>Logo Önizleme:</strong></p>
+                    <img id="logoPreview" class="logo-preview" />
+                </div>
+            </div>
+
+            <!-- İletişim Bilgileri -->
+            <div class="section">
+                <h2>📧 İletişim Bilgileri</h2>
+                <div class="warning-box">
+                    <strong>⚠️ Önemli:</strong> Satın alma işlemi tamamlandıktan sonra logo değişikliği için iletişim bilgilerinizi kullanacağız.
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">E-posta Adresi:</label>
+                    <input type="email" id="email" class="form-control" placeholder="ornek@email.com" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="phone">Telefon Numarası:</label>
+                    <input type="tel" id="phone" class="form-control" placeholder="+90 555 123 45 67">
+                </div>
+
+                <div class="form-group">
+                    <label for="companyName">Şirket/Marka Adı (Opsiyonel):</label>
+                    <input type="text" id="companyName" class="form-control" placeholder="Şirket adınız">
+                </div>
+            </div>
+
+            <!-- Notlar -->
+            <div class="section">
+                <h2>📝 Ek Notlar</h2>
+                <div class="form-group">
+                    <label for="notes">Özel İstekleriniz:</label>
+                    <textarea id="notes" class="form-control" rows="4" placeholder="Logo konumu, özel istek vb. notlarınızı buraya yazabilirsiniz..."></textarea>
+                </div>
+            </div>
+
+            <!-- Butonlar -->
+            <div class="button-container">
+                <a href="/map" class="btn btn-secondary">← Geri Dön</a>
+                <button id="completePurchaseBtn" class="btn btn-primary">🛒 Satın Almayı Tamamla</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        
+        // URL'den parametreleri al
+        const urlParams = new URLSearchParams(window.location.search);
+        const cellsParam = urlParams.get('cells');
+        const cellCount = urlParams.get('count');
+        
+        let selectedCells = [];
+        
+        if (cellsParam) {
+            try {
+                selectedCells = JSON.parse(decodeURIComponent(cellsParam));
+            } catch (e) {
+                console.error('Hücre verisi parse edilemedi:', e);
+            }
+        }
+
+        // Sayfa yüklendiğinde hücre bilgilerini göster
+        document.addEventListener('DOMContentLoaded', () => {
+            updateCellInfo();
+            setupEventListeners();
+        });
+
+        function updateCellInfo() {
+            const cellCountEl = document.getElementById('cellCount');
+            const cellListEl = document.getElementById('cellList');
+            const totalPriceEl = document.getElementById('totalPrice');
+            
+            const count = selectedCells.length;
+            cellCountEl.textContent = count;
+            totalPriceEl.textContent = count * 10;
+            
+            // Hücreleri listele
+            cellListEl.innerHTML = '';
+            selectedCells.forEach(cell => {
+                const cellItem = document.createElement('span');
+                cellItem.className = 'cell-item';
+                cellItem.textContent = `Hücre ${cell}`;
+                cellListEl.appendChild(cellItem);
+            });
+        }
+
+        function setupEventListeners() {
+            // Logo dosyası seçimi
+            const logoFile = document.getElementById('logoFile');
+            const previewContainer = document.getElementById('previewContainer');
+            const logoPreview = document.getElementById('logoPreview');
+            
+            logoFile.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    // Dosya boyutu kontrolü (2MB)
+                    if (file.size > 2 * 1024 * 1024) {
+                        alert('Dosya boyutu 2MB\'dan büyük olamaz!');
+                        return;
+                    }
+                    
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        logoPreview.src = e.target.result;
+                        previewContainer.style.display = 'block';
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+
+            // Satın alma butonu
+            const completePurchaseBtn = document.getElementById('completePurchaseBtn');
+            completePurchaseBtn.addEventListener('click', handlePurchase);
+        }
+
+        async function handlePurchase() {
+            const email = document.getElementById('email').value;
+            const phone = document.getElementById('phone').value;
+            const companyName = document.getElementById('companyName').value;
+            const notes = document.getElementById('notes').value;
+            const logoFile = document.getElementById('logoFile').files[0];
+            
+            // Validasyon
+            if (!email) {
+                alert('Lütfen e-posta adresinizi girin.');
+                return;
+            }
+            
+            if (selectedCells.length === 0) {
+                alert('Seçilen hücre bulunamadı.');
+                return;
+            }
+
+            // FormData oluştur (dosya yüklemesi için)
+            const formData = new FormData();
+            formData.append('cells', JSON.stringify(selectedCells));
+            formData.append('email', email);
+            formData.append('phone', phone || '');
+            formData.append('company_name', companyName || '');
+            formData.append('notes', notes || '');
+            
+            if (logoFile) {
+                formData.append('logo', logoFile);
+            }
+
+            try {
+                const response = await fetch('/api/complete-purchase', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (response.ok && result.status === 'success') {
+                    alert('🎉 Satın alma işlemi başarıyla tamamlandı!\n' + result.message);
+                    // Başarılı satın alma sonrası yönlendirme
+                    window.location.href = '/map?purchase=success';
+                } else {
+                    alert('❌ Satın alma işlemi başarısız:\n' + (result.error || 'Bilinmeyen hata'));
+                }
+            } catch (error) {
+                alert('❌ Sunucuya erişilemedi: ' + error.message);
+                console.error('Satın alma hatası:', error);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -39,7 +39,7 @@
       display: block;
       width: 100%;
       height: 100%;
-      object-fit: cover; /* Ekranı tam kaplaması için cover kullan */
+      object-fit: cover;
       background: #333;
     }
     
@@ -122,7 +122,7 @@
     const purchaseBtn = document.getElementById("purchaseBtn");
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-    const cols = 400; // 400 sütun
+    const cols = 400;
     const rows = 250;
 
     const img = document.getElementById("mapImage");
@@ -136,44 +136,178 @@
     let imageScale = 1;
     let imageOffsetX = 0;
     let imageOffsetY = 0;
-
-    
     let isDragging = false;
     let dragStartX = 0;
     let dragStartY = 0;
     let dragCurrentX = 0;
     let dragCurrentY = 0;
 
+    let purchasedCells = new Set();
+    let selectedCells = new Set();
+
+    // Fonksiyonları en başta tanımla
+    function colorCellGreen(key) {
+      // Canvas üzerinde yeşil renk göster - satın alınan hücreler için
+      console.log("🟢 Hücre yeşile boyandı:", key);
+    }
+
+    function colorCellBlue(key) {
+      // Canvas üzerinde mavi renk göster - seçili hücreler için
+      console.log("🔵 Hücre maviye boyandı:", key);
+    }
+
+    async function fetchPurchasedCells() {
+      try {
+        const res = await fetch("/api/purchased-cells");
+        const data = await res.json();
+
+        if (res.ok && Array.isArray(data.cells)) {
+          for (const cell of data.cells) {
+            purchasedCells.add(cell);
+            colorCellGreen(cell);
+          }
+          console.log("✅ Daha önce satın alınan hücreler yüklendi:", data.cells);
+          draw(); // Canvas'ı güncelle
+        } else {
+          console.error("❌ Hücre verisi hatalı:", data);
+        }
+      } catch (err) {
+        console.error("❌ Hücreleri çekerken hata:", err);
+      }
+    }
+
+    async function fetchSelectedCells() {
+      try {
+        const res = await fetch("/api/selected-cells");
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.cells)) {
+            for (const cell of data.cells) {
+              selected.add(cell);
+            }
+            console.log("✅ Daha önce seçilen hücreler yüklendi:", data.cells);
+            draw(); // Canvas'ı güncelle
+          }
+        }
+      } catch (err) {
+        console.error("❌ Seçili hücreleri çekerken hata:", err);
+      }
+    }
+async function renderPurchasedLogos(ctx, cellSize = 20) {
+  const response = await fetch("/api/purchased-cells");
+  const data = await response.json();
+  const cellData = data.detailed_data;
+
+  const logoGroups = {};
+
+  for (const item of cellData) {
+    if (!item.logo_url) continue;
+
+    if (!logoGroups[item.logo_url]) {
+      logoGroups[item.logo_url] = [];
+    }
+
+    logoGroups[item.logo_url].push(item.cell);
+  }
+
+  for (const [logoUrl, cells] of Object.entries(logoGroups)) {
+    const coords = cells.map(cell => {
+      const [x, y] = cell.split(',').map(Number);
+      return { x, y };
+    });
+
+    if (coords.length === 0) continue;
+
+    // 📐 Kapsayan dikdörtgeni bul
+    const minX = Math.min(...coords.map(c => c.x));
+    const maxX = Math.max(...coords.map(c => c.x));
+    const minY = Math.min(...coords.map(c => c.y));
+    const maxY = Math.max(...coords.map(c => c.y));
+
+    const widthInCells = maxX - minX + 1;
+    const heightInCells = maxY - minY + 1;
+
+    const screenX = imageOffsetX + minX * (img.naturalWidth * imageScale / cols);
+    const screenY = imageOffsetY + minY * (img.naturalHeight * imageScale / rows);
+    const screenW = widthInCells * (img.naturalWidth * imageScale / cols);
+    const screenH = heightInCells * (img.naturalHeight * imageScale / rows);
+
+    const imgLogo = new Image();
+    imgLogo.src = logoUrl.startsWith("/logos/")
+      ? logoUrl.replace("/logos/", "/media/logos/")
+      : logoUrl;
+
+    imgLogo.onload = () => {
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(imgLogo, screenX, screenY, screenW, screenH);
+      ctx.globalAlpha = 1.0;
+    };
+  }
+}
+
+
+    async function handlePurchase(csrfToken) {
+      try {
+        const purchaseRes = await fetch("/api/purchase", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken
+          },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            logo_url: "https://example.com/logo.png"
+          })
+        });
+
+        const result = await purchaseRes.json();
+
+        if (purchaseRes.ok && result.status === "success") {
+          alert("🎉 Satın alma başarılı!\n" + result.message);
+
+          // Satın alınan hücreleri yeşil yap
+          for (const cell of result.cells) {
+            purchasedCells.add(cell);
+            selected.delete(cell); // Satın alınan hücreleri seçimden çıkar
+          }
+
+          draw(); // Canvas'ı güncelle
+
+        } else {
+          alert("❌ Satın alma başarısız:\n" + (result.error || "Hata oluştu"));
+          console.log("Satın alma hatası:", result);
+        }
+
+      } catch (err) {
+        alert("❌ Sunucuya erişilemedi: " + err.message);
+        console.error("Fetch hatası:", err);
+      }
+    }
+
     function resize() {
-     
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
 
-     
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
         const containerAspect = canvas.width / canvas.height;
         const imageAspect = img.naturalWidth / img.naturalHeight;
         
         if (containerAspect > imageAspect) {
-        
           imageScale = canvas.width / img.naturalWidth;
           imageOffsetX = 0;
           imageOffsetY = (canvas.height - (img.naturalHeight * imageScale)) / 2;
         } else {
-        
           imageScale = canvas.height / img.naturalHeight;
           imageOffsetX = (canvas.width - (img.naturalWidth * imageScale)) / 2;
           imageOffsetY = 0;
         }
 
-        
         if (!imageDataCanvas) {
           imageDataCanvas = document.createElement("canvas");
           imageDataCanvas.width = img.naturalWidth;
           imageDataCanvas.height = img.naturalHeight;
           imageCtx = imageDataCanvas.getContext("2d");
           
-       
           imageCtx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
           imageData = imageCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
         }
@@ -186,19 +320,16 @@
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      
       const visibleWidth = img.naturalWidth * imageScale;
       const visibleHeight = img.naturalHeight * imageScale;
       
       const cellW = visibleWidth / cols;
       const cellH = visibleHeight / rows;
 
-      
       if (cellW > 1 && cellH > 1) {
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.19)"; // Daha görünür beyaz
-        ctx.lineWidth = 1; // Daha kalın çizgi
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.19)";
+        ctx.lineWidth = 1;
         
-      
         for (let x = 0; x <= cols; x++) {
           const screenX = imageOffsetX + (x * cellW);
           if (screenX >= 0 && screenX <= canvas.width) {
@@ -209,7 +340,6 @@
           }
         }
         
-       
         for (let y = 0; y <= rows; y++) {
           const screenY = imageOffsetY + (y * cellH);
           if (screenY >= 0 && screenY <= canvas.height) {
@@ -221,17 +351,35 @@
         }
       }
 
-    
-      ctx.fillStyle = "rgba(34,197,94,0.6)";
-      ctx.strokeStyle = "rgba(34,197,94,0.8)";
+      // Seçili hücreleri mavi renkte göster (henüz satın alınmamış)
+      ctx.fillStyle = "rgba(59, 130, 246, 0.6)"; // Mavi
+      ctx.strokeStyle = "rgba(59, 130, 246, 0.8)";
       ctx.lineWidth = 1;
 
       selected.forEach(key => {
+        if (!purchasedCells.has(key)) { // Sadece satın alınmamış hücreleri göster
+          const [x, y] = key.split(',').map(Number);
+          const screenX = imageOffsetX + (x * cellW);
+          const screenY = imageOffsetY + (y * cellH);
+          
+          if (screenX + cellW > 0 && screenX < canvas.width && 
+              screenY + cellH > 0 && screenY < canvas.height) {
+            ctx.fillRect(screenX, screenY, cellW, cellH);
+            ctx.strokeRect(screenX, screenY, cellW, cellH);
+          }
+        }
+      });
+
+      // Satın alınan hücreleri yeşil renkte göster
+      ctx.fillStyle = "rgba(34, 197, 94, 0.8)"; // Yeşil
+      ctx.strokeStyle = "rgba(34, 197, 94, 1)";
+      ctx.lineWidth = 2;
+
+      purchasedCells.forEach(key => {
         const [x, y] = key.split(',').map(Number);
         const screenX = imageOffsetX + (x * cellW);
         const screenY = imageOffsetY + (y * cellH);
         
-      
         if (screenX + cellW > 0 && screenX < canvas.width && 
             screenY + cellH > 0 && screenY < canvas.height) {
           ctx.fillRect(screenX, screenY, cellW, cellH);
@@ -239,7 +387,6 @@
         }
       });
 
-    
       if (isDragging) {
         const minX = Math.min(dragStartX, dragCurrentX);
         const minY = Math.min(dragStartY, dragCurrentY);
@@ -256,6 +403,7 @@
 
       selectedCountEl.textContent = selected.size;
       updatePurchaseButtonVisibility();
+      renderPurchasedLogos(ctx, visibleWidth / cols); 
     }
 
     function updatePurchaseButtonVisibility() {
@@ -263,7 +411,6 @@
     }
 
     function screenToGrid(screenX, screenY) {
-     
       const imageX = (screenX - imageOffsetX) / imageScale;
       const imageY = (screenY - imageOffsetY) / imageScale;
       
@@ -309,23 +456,6 @@
       const avgBrightness = totalBrightness / validCount;
       return avgBrightness > 100;
     }
-    function colorCellGreen(key) {
-  const [col, row] = key.split(',').map(Number);
-  const cellElement = document.getElementById(`cell-${col}-${row}`);
-  if (cellElement) {
-    cellElement.style.backgroundColor = 'green';
-    cellElement.style.pointerEvents = 'none';
-    cellElement.style.opacity = '0.7';
-  }
-}
-fetch('/api/purchased-cells')
-  .then(res => res.json())
-  .then(data => {
-    purchasedCells = new Set(data.cells);
-    for (const key of purchasedCells) {
-      colorCellGreen(key);
-    }
-  });
 
     function selectRectangleArea(startX, startY, endX, endY) {
       const [startCol, startRow] = screenToGrid(startX, startY);
@@ -338,15 +468,15 @@ fetch('/api/purchased-cells')
       
       for (let col = minCol; col <= maxCol; col++) {
         for (let row = minRow; row <= maxRow; row++) {
-          if (isLandCell(col, row)) {
-            const key = `${col},${row}`;
+          const key = `${col},${row}`;
+          if (isLandCell(col, row) && !purchasedCells.has(key)) {
             selected.add(key);
           }
         }
       }
     }
 
-    
+    // Event listeners
     canvas.addEventListener("mousedown", e => {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -373,7 +503,6 @@ fetch('/api/purchased-cells')
       }
 
       const [col, row] = screenToGrid(x, y);
-     
     });
 
     canvas.addEventListener("mouseup", e => {
@@ -385,13 +514,14 @@ fetch('/api/purchased-cells')
         const dragDistance = Math.abs(x - dragStartX) + Math.abs(y - dragStartY);
 
         if (dragDistance < 5) {
-          // Tek tıklama
           const [col, row] = screenToGrid(x, y);
           const key = `${col},${row}`;
           lastClickEl.textContent = `(${col}, ${row})`;
 
           if (!isLandCell(col, row)) {
             console.log("🌊 Bu hücre deniz veya sınır dışı, seçilemez.");
+          } else if (purchasedCells.has(key)) {
+            console.log("🟢 Bu hücre zaten satın alındı:", key);
           } else {
             if (selected.has(key)) {
               selected.delete(key);
@@ -402,7 +532,6 @@ fetch('/api/purchased-cells')
             }
           }
         } else {
-          // Kutu seçimi
           selectRectangleArea(dragStartX, dragStartY, x, y); 
           console.log("📦 Kutu alanı seçildi");
         }
@@ -412,7 +541,6 @@ fetch('/api/purchased-cells')
       }
     });
 
-  
     canvas.addEventListener("mouseleave", e => {
       if (isDragging) {
         isDragging = false;
@@ -431,99 +559,27 @@ fetch('/api/purchased-cells')
 
       try {
         const saveRes = await fetch("/api/save-selection", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" ,
-    "X-CSRFToken": csrfToken // CSRF token ekle
-  },
-  body: JSON.stringify({ cells: cellsArray })
-});
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken
+          },
+          body: JSON.stringify({ cells: cellsArray })
+        });
 
-const saveText = await saveRes.text(); // ilk olarak text al
-if (!saveRes.ok) {
-  console.error("❌ Hata cevabı:", saveText);
-  alert("Hata: " + saveText);
-  return;
-}
-
-const saveData = JSON.parse(saveText);
-
+        const saveText = await saveRes.text();
         if (!saveRes.ok) {
-          alert("❌ Hücreleri kaydederken hata oluştu:\n" + (saveData.detail || saveData.message));
+          console.error("❌ Hata cevabı:", saveText);
+          alert("Hata: " + saveText);
           return;
         }
 
+        const saveData = JSON.parse(saveText);
         console.log("✅ Hücreler kaydedildi:", saveData);
-let selectedCells = new Set();
 
-try {
-  const purchaseRes = await fetch("/api/purchase", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-CSRFToken": csrfToken
-    },
-    credentials: "same-origin",
-    body: JSON.stringify({
-      logo_url: "https://example.com/logo.png"
-    })
-  });
-
-  const result = await purchaseRes.json();  // ✅ sadece bir kez .json()
-
-  if (purchaseRes.ok && result.status === "success") {
-    // 🎉 Kullanıcıya mesaj göster
-    alert("🎉 Satın alma başarılı!\n" + result.message);
-
-    // ✅ Satın alınan hücreleri yeşile boya
-    for (const cell of result.cells) {
-      purchasedCells.add(cell);
-      colorCellGreen(cell);
-    }
-
-    // 🧹 Seçimi temizle
-    selectedCells.clear(); // ← Set kullandığını varsayıyorum
-    draw(); // varsa grid'i yeniden çiz
-
-  } else {
-    // ❌ Hata varsa kullanıcıya mesaj göster
-    alert("❌ Satın alma başarısız:\n" + (result.error || "Hata oluştu"));
-    console.log("Satın alma hatası:", result);
-  }
-
-} catch (err) {
-  alert("❌ Sunucuya erişilemedi: " + err.message);
-  console.error("Fetch hatası:", err);
-}
-
-
-const result = await purchaseRes.json();
-
-if (result.status === "success") {
-  // 🎯 Yeni satın alınan hücreleri Set'e ekle
-  for (const cell of result.cells) {
-    purchasedCells.add(cell);  // "10,12" gibi
-    colorCellGreen(cell);      // Haritada yeşil boya
-  }
-
-  // 🧹 Seçili hücreleri temizle (istersen)
-  selectedCells.clear();
-  //updateUI();
-} else {
-  alert("❌ " + (result.error || "Satın alma başarısız"));
-}
-
-
-
-        const purchaseData = await purchaseRes.json();
-
-        if (purchaseRes.ok) {
-          alert("🎉 Satın alma başarılı!\n" + purchaseData.message);
-          selected.clear();
-          draw();
-        } else {
-          alert("❌ Satın alma başarısız:\n" + (purchaseData.error || "Hata"));
-          console.log("Satın alma hatası:", purchaseData);
-        }
+        // Satın alma sayfasına yönlendir
+        const selectedCellsParam = encodeURIComponent(JSON.stringify(cellsArray));
+        window.location.href = `/purchase?cells=${selectedCellsParam}&count=${cellsArray.length}`;
 
       } catch (err) {
         alert("❌ Sunucuya erişilemedi: " + err.message);
@@ -534,12 +590,11 @@ if (result.status === "success") {
     img.addEventListener("load", () => {
       console.log("Görüntü yüklendi:", img.naturalWidth, "x", img.naturalHeight);
       resize();
+      fetchPurchasedCells(); 
+      fetchSelectedCells(); // Seçili hücreleri de yükle
     });
 
-    
     window.addEventListener("resize", resize);
-
-   
     window.addEventListener("load", () => {
       resize();
     });

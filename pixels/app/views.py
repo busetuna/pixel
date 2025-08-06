@@ -156,3 +156,71 @@ def my_purchases(request):
             "error": "Satın alımlar alınırken hata oluştu",
             "details": str(e)
         }, status=500)
+
+
+from django.views.decorators.csrf import csrf_exempt
+from django.core.files.storage import default_storage
+from django.utils.text import slugify
+import os
+from datetime import datetime
+
+@login_required
+@csrf_exempt  # Eğer formdan POST geliyorsa ve CSRF token kullanmıyorsan geçici olarak eklenebilir.
+def complete_purchase(request):
+    if request.method == 'POST':
+        try:
+            cells = request.POST.get('cells')
+            email = request.POST.get('email')
+            phone = request.POST.get('phone')
+            company_name = request.POST.get('company_name')
+            notes = request.POST.get('notes')
+            logo_file = request.FILES.get('logo')
+
+            if not cells:
+                return JsonResponse({"error": "Hücre bilgisi eksik"}, status=400)
+
+            cell_list = json.loads(cells)
+
+            # Logo kaydetme işlemi
+            logo_url = ""
+            if logo_file:
+                filename = f"{slugify(company_name)}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{logo_file.name}"
+                save_path = os.path.join('logos', filename)
+                path = default_storage.save(save_path, logo_file)
+                logo_url = default_storage.url(path) 
+
+            # Hücrelerin daha önce satın alınıp alınmadığını kontrol et
+            already_taken = PurchasedArea.objects.filter(cell__in=cell_list)
+            if already_taken.exists():
+                taken = [item.cell for item in already_taken]
+                return JsonResponse({
+                    "error": "Bazı hücreler zaten satın alınmış",
+                    "taken": taken
+                }, status=400)
+
+            # Satın alma işlemi
+            with transaction.atomic():
+                for cell in cell_list:
+                    PurchasedArea.objects.create(
+                        user=request.user,
+                        cell=cell,
+                        logo_url=logo_url
+                    )
+
+            return JsonResponse({
+                "status": "success",
+                "message": "Satın alma başarıyla tamamlandı!",
+                "cells": cell_list
+            })
+
+        except Exception as e:
+            return JsonResponse({
+                "error": "Satın alma sırasında hata oluştu",
+                "details": str(e)
+            }, status=500)
+
+    return JsonResponse({'error': 'Sadece POST destekleniyor'}, status=405)
+
+@login_required
+def purchase_page(request):
+    return render(request, 'app/purchase.html')
