@@ -76,27 +76,57 @@
       max-width: 300px;
     }
     
-    #purchaseBtn {
-      position: absolute;
-      bottom: 20px;
-      right: 20px;
+    /* Butonlar için ortak stil */
+    .control-btn {
       padding: 12px 24px;
       font-size: 16px;
-      background-color: #10B981;
-      color: white;
       border: none;
       border-radius: 8px;
       cursor: pointer;
       z-index: 10;
+      margin-left: 10px;
+      transition: all 0.3s ease;
+    }
+    
+    #purchaseBtn {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background-color: #10B981;
+      color: white;
       display: none;
     }
     
     #purchaseBtn:hover {
       background-color: #0D9F6E;
+      transform: translateY(-2px);
+    }
+    
+    #clearBtn {
+      position: absolute;
+      bottom: 20px;
+      right: 160px; /* Satın Al butonunun soluna yerleştir */
+      background-color: #EF4444;
+      color: white;
+      display: none;
+    }
+    
+    #clearBtn:hover {
+      background-color: #DC2626;
+      transform: translateY(-2px);
     }
     
   </style>
 </head>
+<div id="tooltip" hidden
+     style="
+      position:fixed; z-index:1000; pointer-events:none;
+      background: rgba(17,24,39,.95); color:#fff; 
+      padding:12px 14px; border-radius:10px; 
+      box-shadow:0 12px 28px rgba(0,0,0,.25);
+      border:1px solid rgba(255,255,255,.08); 
+      max-width:280px; font: 13px/1.5 ui-sans-serif,system-ui;">
+</div>
 <body>
   <div id="container">
     <div id="mapContainer">
@@ -110,16 +140,23 @@
     <div id="debug">
       <div id="debugText">Harita yükleniyor...</div>
     </div>
-    <button id="purchaseBtn">
-      ✅ Satın Al
+    <button id="clearBtn" class="control-btn">
+      Seçimi Temizle
+    </button>
+    <button id="purchaseBtn" class="control-btn">
+      Satın Al
     </button>
   </div>
 
   <script>
+    const tooltipEl = document.getElementById('tooltip');
+    let logoRegions = []; // {x,y,w,h, meta:{ company_name, notes, owner, purchased_at, logo_url }}
+
     const canvas = document.getElementById("gridCanvas");
     const ctx = canvas.getContext("2d");
     const selected = new Set();
     const purchaseBtn = document.getElementById("purchaseBtn");
+    const clearBtn = document.getElementById("clearBtn");
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
     const cols = 400;
@@ -144,12 +181,54 @@
 
     let purchasedCells = new Set();
     let selectedCells = new Set();
+    // Canvas'ta "background-size: cover" mantığı
+function drawImageCover(ctx, img, dx, dy, dWidth, dHeight) {
+  const ir = img.naturalWidth / img.naturalHeight; // image ratio
+  const dr = dWidth / dHeight;                      // dest rect ratio
+  let sx, sy, sWidth, sHeight;
+
+  if (dr > ir) {
+    // hedef daha yatay -> en küçük ortak yükseklikten kırp
+    sWidth = img.naturalWidth;
+    sHeight = sWidth / dr;
+    sx = 0;
+    sy = (img.naturalHeight - sHeight) / 2;
+  } else {
+    // hedef daha dikey -> en küçük ortak genişlikten kırp
+    sHeight = img.naturalHeight;
+    sWidth = sHeight * dr;
+    sy = 0;
+    sx = (img.naturalWidth - sWidth) / 2;
+  }
+
+  drawImageCover(ctx, imgLogo, screenX, screenY, screenW, screenH);
+
+}
 
     // Fonksiyonları en başta tanımla
     function colorCellGreen(key) {
       // Canvas üzerinde yeşil renk göster - satın alınan hücreler için
       console.log("🟢 Hücre yeşile boyandı:", key);
     }
+
+    function showTooltip(html, x, y) {
+  tooltipEl.innerHTML = html;
+  tooltipEl.hidden = false;
+
+  // Ekran dışına taşmasın
+  const pad = 12;
+  const rect = tooltipEl.getBoundingClientRect();
+  let left = x + 16;
+  let top  = y + 16;
+
+  if (left + rect.width + pad > window.innerWidth)  left = x - rect.width - 16;
+  if (top  + rect.height + pad > window.innerHeight) top  = y - rect.height - 16;
+
+  tooltipEl.style.left = `${left}px`;
+  tooltipEl.style.top  = `${top}px`;
+}
+function hideTooltip(){ tooltipEl.hidden = true; }
+
 
     function colorCellBlue(key) {
       // Canvas üzerinde mavi renk göster - seçili hücreler için
@@ -158,7 +237,7 @@
 
     async function fetchPurchasedCells() {
       try {
-        const res = await fetch("/api/purchased-cells");
+        const res = await fetch("/api/purchased");
         const data = await res.json();
 
         if (res.ok && Array.isArray(data.cells)) {
@@ -176,6 +255,7 @@
       }
     }
 
+    
     async function fetchSelectedCells() {
       try {
         const res = await fetch("/api/selected-cells");
@@ -193,50 +273,64 @@
         console.error("❌ Seçili hücreleri çekerken hata:", err);
       }
     }
-async function renderPurchasedLogos(ctx, cellSize = 20) {
+
+   async function renderPurchasedLogos(ctx, cellSize = 20) {
+  logoRegions = []; 
+
   const response = await fetch("/api/purchased-cells");
   const data = await response.json();
-  const cellData = data.detailed_data;
+  const cellData = data.detailed_data || [];
 
+  // logo_url'e göre grupla
   const logoGroups = {};
-
   for (const item of cellData) {
     if (!item.logo_url) continue;
-
-    if (!logoGroups[item.logo_url]) {
-      logoGroups[item.logo_url] = [];
-    }
-
-    logoGroups[item.logo_url].push(item.cell);
+    const key = item.logo_url;
+    if (!logoGroups[key]) logoGroups[key] = { cells: [], meta: item };
+    logoGroups[key].cells.push(item.cell);
   }
 
-  for (const [logoUrl, cells] of Object.entries(logoGroups)) {
-    const coords = cells.map(cell => {
-      const [x, y] = cell.split(',').map(Number);
+  for (const [logoUrl, group] of Object.entries(logoGroups)) {
+    const cells = group.cells;
+    const meta  = group.meta; // owner, company_name, notes, purchased_at vs.
+
+    const coords = cells.map(c => {
+      const [x, y] = c.split(',').map(Number);
       return { x, y };
     });
+    if (!coords.length) continue;
 
-    if (coords.length === 0) continue;
-
-    // 📐 Kapsayan dikdörtgeni bul
+    // kapsayan dikdörtgen
     const minX = Math.min(...coords.map(c => c.x));
     const maxX = Math.max(...coords.map(c => c.x));
     const minY = Math.min(...coords.map(c => c.y));
     const maxY = Math.max(...coords.map(c => c.y));
 
-    const widthInCells = maxX - minX + 1;
-    const heightInCells = maxY - minY + 1;
+    const visibleWidth  = img.naturalWidth * imageScale;
+    const visibleHeight = img.naturalHeight * imageScale;
+    const cellW = visibleWidth / cols;
+    const cellH = visibleHeight / rows;
 
-    const screenX = imageOffsetX + minX * (img.naturalWidth * imageScale / cols);
-    const screenY = imageOffsetY + minY * (img.naturalHeight * imageScale / rows);
-    const screenW = widthInCells * (img.naturalWidth * imageScale / cols);
-    const screenH = heightInCells * (img.naturalHeight * imageScale / rows);
+    const screenX = imageOffsetX + minX * cellW;
+    const screenY = imageOffsetY + minY * cellH;
+    const screenW = (maxX - minX + 1) * cellW;
+    const screenH = (maxY - minY + 1) * cellH;
 
+    // Bölgeyi kaydet (tooltip için)
+    logoRegions.push({
+      x: screenX, y: screenY, w: screenW, h: screenH,
+      meta: {
+        logo_url: logoUrl.startsWith("/logos/") ? logoUrl.replace("/logos/", "/media/logos/") : logoUrl,
+        owner: meta.owner,
+        company_name: meta.company_name,
+        notes: meta.notes,
+        purchased_at: meta.purchased_at
+      }
+    });
+
+    // Logoyu çiz
     const imgLogo = new Image();
-    imgLogo.src = logoUrl.startsWith("/logos/")
-      ? logoUrl.replace("/logos/", "/media/logos/")
-      : logoUrl;
-
+    imgLogo.src = logoRegions[logoRegions.length-1].meta.logo_url;
     imgLogo.onload = () => {
       ctx.globalAlpha = 0.9;
       ctx.drawImage(imgLogo, screenX, screenY, screenW, screenH);
@@ -284,38 +378,43 @@ async function renderPurchasedLogos(ctx, cellSize = 20) {
       }
     }
 
-    function resize() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-
-      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-        const containerAspect = canvas.width / canvas.height;
-        const imageAspect = img.naturalWidth / img.naturalHeight;
-        
-        if (containerAspect > imageAspect) {
-          imageScale = canvas.width / img.naturalWidth;
-          imageOffsetX = 0;
-          imageOffsetY = (canvas.height - (img.naturalHeight * imageScale)) / 2;
-        } else {
-          imageScale = canvas.height / img.naturalHeight;
-          imageOffsetX = (canvas.width - (img.naturalWidth * imageScale)) / 2;
-          imageOffsetY = 0;
-        }
-
-        if (!imageDataCanvas) {
-          imageDataCanvas = document.createElement("canvas");
-          imageDataCanvas.width = img.naturalWidth;
-          imageDataCanvas.height = img.naturalHeight;
-          imageCtx = imageDataCanvas.getContext("2d");
-          
-          imageCtx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
-          imageData = imageCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
-        }
-      }
-
-      debugEl.textContent = `Harita: ${img.naturalWidth}x${img.naturalHeight} | Canvas: ${canvas.width}x${canvas.height} | Scale: ${imageScale.toFixed(2)}`;
+    function clearSelection() {
+      selected.clear();
+      console.log("🗑️ Tüm seçimler temizlendi");
       draw();
     }
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+    // COVER: kapsayacak ölçek (kırpma olabilir)
+    const scaleW = canvas.width  / img.naturalWidth;
+    const scaleH = canvas.height / img.naturalHeight;
+    imageScale   = Math.max(scaleW, scaleH);
+
+    // COVER’da ofsetler (merkezde konumlandırma; negatif olabilir)
+    imageOffsetX = (canvas.width  - img.naturalWidth  * imageScale) / 2;
+    imageOffsetY = (canvas.height - img.naturalHeight * imageScale) / 2;
+
+    // Deniz/kara ayrımı için kaynak görseli bir kez hazırla
+    if (!imageDataCanvas) {
+      imageDataCanvas = document.createElement("canvas");
+      imageDataCanvas.width  = img.naturalWidth;
+      imageDataCanvas.height = img.naturalHeight;
+      imageCtx = imageDataCanvas.getContext("2d");
+      imageCtx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
+      imageData = imageCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
+    }
+  }
+
+  debugEl.textContent =
+    `Harita: ${img.naturalWidth}x${img.naturalHeight} | Canvas: ${canvas.width}x${canvas.height} | Scale(COVER): ${imageScale.toFixed(3)} | off=(${imageOffsetX.toFixed(1)}, ${imageOffsetY.toFixed(1)})`;
+
+  draw();
+}
+
 
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -326,31 +425,10 @@ async function renderPurchasedLogos(ctx, cellSize = 20) {
       const cellW = visibleWidth / cols;
       const cellH = visibleHeight / rows;
 
-      if (cellW > 1 && cellH > 1) {
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.19)";
-        ctx.lineWidth = 1;
-        
-        for (let x = 0; x <= cols; x++) {
-          const screenX = imageOffsetX + (x * cellW);
-          if (screenX >= 0 && screenX <= canvas.width) {
-            ctx.beginPath();
-            ctx.moveTo(screenX, Math.max(0, imageOffsetY));
-            ctx.lineTo(screenX, Math.min(canvas.height, imageOffsetY + visibleHeight));
-            ctx.stroke();
-          }
-        }
-        
-        for (let y = 0; y <= rows; y++) {
-          const screenY = imageOffsetY + (y * cellH);
-          if (screenY >= 0 && screenY <= canvas.height) {
-            ctx.beginPath();
-            ctx.moveTo(Math.max(0, imageOffsetX), screenY);
-            ctx.lineTo(Math.min(canvas.width, imageOffsetX + visibleWidth), screenY);
-            ctx.stroke();
-          }
-        }
-      }
+      // 1. ÖNCE LOGOLARI ÇİZ (en altta olsun)
+      renderPurchasedLogos(ctx, visibleWidth / cols);
 
+      // 2. SONRA SEÇİLİ VE SATIN ALINAN HÜCRELERİ ÇİZ
       // Seçili hücreleri mavi renkte göster (henüz satın alınmamış)
       ctx.fillStyle = "rgba(59, 130, 246, 0.6)"; // Mavi
       ctx.strokeStyle = "rgba(59, 130, 246, 0.8)";
@@ -387,6 +465,33 @@ async function renderPurchasedLogos(ctx, cellSize = 20) {
         }
       });
 
+      // 3. EN SON GRID ÇİZGİLERİNİ ÇİZ (en üstte olsun)
+      if (cellW > 1 && cellH > 1) {
+        ctx.strokeStyle = "rgba(28, 25, 25, 0.5)";
+        ctx.lineWidth = 1;
+        
+        for (let x = 0; x <= cols; x++) {
+          const screenX = imageOffsetX + (x * cellW);
+          if (screenX >= 0 && screenX <= canvas.width) {
+            ctx.beginPath();
+            ctx.moveTo(screenX, Math.max(0, imageOffsetY));
+            ctx.lineTo(screenX, Math.min(canvas.height, imageOffsetY + visibleHeight));
+            ctx.stroke();
+          }
+        }
+        
+        for (let y = 0; y <= rows; y++) {
+          const screenY = imageOffsetY + (y * cellH);
+          if (screenY >= 0 && screenY <= canvas.height) {
+            ctx.beginPath();
+            ctx.moveTo(Math.max(0, imageOffsetX), screenY);
+            ctx.lineTo(Math.min(canvas.width, imageOffsetX + visibleWidth), screenY);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Sürükleme sırasında gösterilecek dikdörtgen
       if (isDragging) {
         const minX = Math.min(dragStartX, dragCurrentX);
         const minY = Math.min(dragStartY, dragCurrentY);
@@ -402,12 +507,13 @@ async function renderPurchasedLogos(ctx, cellSize = 20) {
       }
 
       selectedCountEl.textContent = selected.size;
-      updatePurchaseButtonVisibility();
-      renderPurchasedLogos(ctx, visibleWidth / cols); 
+      updateButtonVisibility();
     }
 
-    function updatePurchaseButtonVisibility() {
-      purchaseBtn.style.display = selected.size > 0 ? "block" : "none";
+    function updateButtonVisibility() {
+      const hasSelection = selected.size > 0;
+      purchaseBtn.style.display = hasSelection ? "block" : "none";
+      clearBtn.style.display = hasSelection ? "block" : "none";
     }
 
     function screenToGrid(screenX, screenY) {
@@ -503,6 +609,32 @@ async function renderPurchasedLogos(ctx, cellSize = 20) {
       }
 
       const [col, row] = screenToGrid(x, y);
+      let hovered = null;
+for (let i = logoRegions.length - 1; i >= 0; i--) { // üstte olanı önce bul
+  const r = logoRegions[i];
+  if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) { hovered = r; break; }
+}
+
+if (hovered) {
+  const m = hovered.meta;
+  const comp = m.company_name || "Şirket bilgisi yok";
+  const ownr = m.owner ? `@${m.owner}` : "—";
+  const note = m.notes ? `<div style='margin-top:6px; color:#cbd5e1'>${m.notes}</div>` : "";
+  const when = m.purchased_at ? new Date(m.purchased_at).toLocaleDateString('tr-TR') : "";
+
+  const html = `
+    <div style="display:flex; gap:10px; align-items:flex-start">
+      <img src="${m.logo_url}" alt="" style="width:40px; height:40px; object-fit:contain; background:#111827; border-radius:8px; border:1px solid rgba(255,255,255,.08)"/>
+      <div>
+        <div style="font-weight:700">${comp}</div>
+        <div style="font-size:12px; opacity:.9">Sahip: ${ownr}${when ? " • " + when : ""}</div>
+        ${note}
+      </div>
+    </div>`;
+  showTooltip(html, e.clientX, e.clientY);
+} else {
+  hideTooltip();
+}
     });
 
     canvas.addEventListener("mouseup", e => {
@@ -545,6 +677,16 @@ async function renderPurchasedLogos(ctx, cellSize = 20) {
       if (isDragging) {
         isDragging = false;
         draw();
+      }
+    });
+
+    // Seçimi Temizle butonuna tıklama
+    clearBtn.addEventListener("click", () => {
+      if (selected.size === 0) return;
+      
+      const confirmed = confirm(`${selected.size} seçili hücreyi temizlemek istediğinizden emin misiniz?`);
+      if (confirmed) {
+        clearSelection();
       }
     });
 

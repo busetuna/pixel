@@ -16,7 +16,10 @@ urlpatterns = [
     path('api/my-purchases', views.my_purchases, name='my-purchases'),
     path('purchase/', views.purchase_page, name='purchase_page'),
     path('api/complete-purchase', views.complete_purchase, name='complete_purchase'),
-
+     path('api/purchased-cell', views.purchased_cells_view, name='purchased_cells'),
+    path('api/selected-cell', views.selected_cells_view, name='selected_cells'),
 ]
+    
+
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

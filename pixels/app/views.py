@@ -6,6 +6,11 @@ from .forms import UsernameOnlyUserCreationForm
 from .models import PurchasedArea, SelectedCell
 import json
 from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
+from django.core.files.storage import default_storage
+from django.utils.text import slugify
+import os
+from datetime import datetime
 
 
 def index(request):
@@ -14,7 +19,7 @@ def index(request):
 
 def map(request):
     return render(request, 'app/map.html')
-from django.views.decorators.csrf import csrf_exempt
+
 
 def register(request):
     if request.method == 'POST':
@@ -30,8 +35,6 @@ def register(request):
         form = UsernameOnlyUserCreationForm()
 
     return render(request, 'app/register.html', {'form': form})
-
-
 
 
 @login_required
@@ -111,7 +114,6 @@ def purchase_area(request):
 
 
 def purchased_cells_view(request):
-    # Giriş zorunlu değil, herkes görebilir
     try:
         purchased_areas = PurchasedArea.objects.select_related('user').all()
 
@@ -119,6 +121,8 @@ def purchased_cells_view(request):
             'cell': area.cell,
             'owner': area.user.username,
             'logo_url': area.logo_url,
+            'company_name': area.company_name,
+            'notes': area.notes,
             'purchased_at': getattr(area, 'created_at', None)
         } for area in purchased_areas]
 
@@ -158,41 +162,74 @@ def my_purchases(request):
         }, status=500)
 
 
-from django.views.decorators.csrf import csrf_exempt
-from django.core.files.storage import default_storage
-from django.utils.text import slugify
-import os
-from datetime import datetime
-
 @login_required
-@csrf_exempt  # Eğer formdan POST geliyorsa ve CSRF token kullanmıyorsan geçici olarak eklenebilir.
+@csrf_exempt
 def complete_purchase(request):
     if request.method == 'POST':
         try:
-            cells = request.POST.get('cells')
-            email = request.POST.get('email')
-            phone = request.POST.get('phone')
-            company_name = request.POST.get('company_name')
-            notes = request.POST.get('notes')
+            # Debug: İstek içeriğini logla
+            print("📋 POST Data:", dict(request.POST))
+            print("📁 FILES:", list(request.FILES.keys()) if request.FILES else "No files")
+            
+            cells_data = request.POST.get('cells')
+            email = request.POST.get('email', '').strip()
+            phone = request.POST.get('phone', '').strip()
+            company_name = request.POST.get('company_name', '').strip()
+            notes = request.POST.get('notes', '').strip()
             logo_file = request.FILES.get('logo')
 
-            if not cells:
+            # Validasyon
+            if not cells_data:
+                print("❌ Hücre verisi bulunamadı")
                 return JsonResponse({"error": "Hücre bilgisi eksik"}, status=400)
 
-            cell_list = json.loads(cells)
+            if not email:
+                print("❌ Email bulunamadı")
+                return JsonResponse({"error": "E-posta bilgisi gerekli"}, status=400)
+
+            try:
+                cell_list = json.loads(cells_data)
+                print("✅ Cells parsed:", cell_list)
+            except json.JSONDecodeError as e:
+                print(f"❌ JSON parse hatası: {e}")
+                return JsonResponse({"error": "Hücre verisi geçersiz format"}, status=400)
+
+            if not cell_list:
+                return JsonResponse({"error": "En az bir hücre seçmelisiniz"}, status=400)
 
             # Logo kaydetme işlemi
             logo_url = ""
             if logo_file:
-                filename = f"{slugify(company_name)}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{logo_file.name}"
-                save_path = os.path.join('logos', filename)
-                path = default_storage.save(save_path, logo_file)
-                logo_url = default_storage.url(path) 
+                print(f"📷 Logo yükleniyor: {logo_file.name} ({logo_file.size} bytes)")
+                try:
+                    # Dosya uzantısını al
+                    file_ext = os.path.splitext(logo_file.name)[1].lower()
+                    if not file_ext:
+                        file_ext = '.jpg'  # Varsayılan uzantı
+                    
+                    # Güvenli dosya adı oluştur
+                    safe_company = slugify(company_name) if company_name else 'company'
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    filename = f"{safe_company}_{timestamp}{file_ext}"
+                    
+                    save_path = os.path.join('logos', filename)
+                    path = default_storage.save(save_path, logo_file)
+                    logo_url = default_storage.url(path)
+                    
+                    print(f"✅ Logo kaydedildi: {logo_url}")
+                    
+                except Exception as logo_error:
+                    print(f"❌ Logo kaydetme hatası: {logo_error}")
+                    return JsonResponse({
+                        "error": "Logo yükleme sırasında hata oluştu",
+                        "details": str(logo_error)
+                    }, status=500)
 
             # Hücrelerin daha önce satın alınıp alınmadığını kontrol et
             already_taken = PurchasedArea.objects.filter(cell__in=cell_list)
             if already_taken.exists():
                 taken = [item.cell for item in already_taken]
+                print(f"❌ Zaten alınmış hücreler: {taken}")
                 return JsonResponse({
                     "error": "Bazı hücreler zaten satın alınmış",
                     "taken": taken
@@ -200,20 +237,44 @@ def complete_purchase(request):
 
             # Satın alma işlemi
             with transaction.atomic():
+                created_count = 0
                 for cell in cell_list:
-                    PurchasedArea.objects.create(
-                        user=request.user,
-                        cell=cell,
-                        logo_url=logo_url
-                    )
+                    try:
+                        purchase = PurchasedArea.objects.create(
+                            user=request.user,
+                            cell=cell,
+                            logo_url=logo_url,      
+                            company_name=company_name,
+                            notes=notes
+                        )
+                        created_count += 1
+                        print(f"✅ Hücre oluşturuldu: {cell} -> ID: {purchase.id}")
+                    except Exception as cell_error:
+                        print(f"❌ Hücre oluşturma hatası ({cell}): {cell_error}")
+                        raise cell_error
 
+                print(f"🎉 Toplam {created_count} hücre satın alındı")
+
+            # Başarılı yanıt
             return JsonResponse({
                 "status": "success",
-                "message": "Satın alma başarıyla tamamlandı!",
-                "cells": cell_list
+                "message": f"Satın alma başarıyla tamamlandı! {len(cell_list)} hücre satın alındı.",
+                "cells": cell_list,
+                "logo_url": logo_url,
+                "purchased_count": len(cell_list)
             })
 
+        except json.JSONDecodeError:
+            print("❌ JSON decode hatası")
+            return JsonResponse({
+                "error": "Geçersiz veri formatı"
+            }, status=400)
+            
         except Exception as e:
+            print(f"❌ Genel satın alma hatası: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
             return JsonResponse({
                 "error": "Satın alma sırasında hata oluştu",
                 "details": str(e)
@@ -221,6 +282,32 @@ def complete_purchase(request):
 
     return JsonResponse({'error': 'Sadece POST destekleniyor'}, status=405)
 
+
 @login_required
 def purchase_page(request):
     return render(request, 'app/purchase.html')
+
+
+
+@login_required
+def purchased_cells_view(request):
+    items = PurchasedArea.objects.select_related('user').all()
+    cells_data = [{
+        "cell": it.cell,
+        "owner": it.user.username,
+        "logo_url": it.logo_url,
+        "company_name": it.company_name,
+        "notes": it.notes,
+        "purchased_at": it.created_at.isoformat() if it.created_at else None,
+    } for it in items]
+    return JsonResponse({
+        "cells": [it.cell for it in items],
+        "detailed_data": cells_data,
+        "total_count": len(cells_data),
+    })
+
+@login_required
+def selected_cells_view(request):
+    qs = SelectedCell.objects.filter(user=request.user)
+    cells = [f"{c.col},{c.row}" for c in qs]
+    return JsonResponse({"cells": cells, "count": len(cells)})

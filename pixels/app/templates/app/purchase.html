@@ -1,447 +1,459 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="tr" data-theme="light">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="csrf-token" content="{{ csrf_token }}">
-    <title>Satın Alma - Logo Yükleme</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <title>Satın Alma - Logo Yükleme</title>
+  <style>
+    :root{
+      --bg: linear-gradient(135deg,#f0f2f5 0%,#e3e6ea 100%);
+      --card: rgba(255,255,255,.95);
+      --text: #1e293b;
+      --muted: #475569;
+      --ring: rgba(99,102,241,.25);
+      --primary: #4b5563;
+      --primary-2: #6b7280;
+      --ok: #16a34a;
+      --warn: #b45309;
+      --danger: #dc2626;
+      --border: #d1d5db;
+      --chip-bg: #e5e7eb;
+      --chip-fg: #374151;
+      --section-bg:#f9fafb;
+      --shadow: 0 20px 40px rgba(0,0,0,.08);
+    }
+    [data-theme="dark"]{
+      --bg: #1f2937;
+      --card: rgba(31,41,55,.95);
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --ring: rgba(156,163,175,.35);
+      --primary: #9ca3af;
+      --primary-2: #6b7280;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --border: #374151;
+      --chip-bg: #374151;
+      --chip-fg: #e5e7eb;
+      --section-bg:#111827;
+      --shadow: 0 20px 50px rgba(0,0,0,.6);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; padding:24px; min-height:100vh;
+      background:var(--bg);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      color:var(--text);
+    }
+    .container{max-width:980px; margin:0 auto; background:var(--card); border-radius:24px; box-shadow:var(--shadow); overflow:hidden; backdrop-filter: blur(8px); border:1px solid var(--border)}
+    .header{
+      position:relative; padding:32px 28px; color:#fff;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%);
+      isolation:isolate;
+    }
+    .header h1{margin:0 0 6px; font-size:clamp(26px,3.3vw,38px); letter-spacing:.3px}
+    .header p{margin:0; opacity:.95}
+    .header .stats{margin-top:16px; display:flex; gap:12px; flex-wrap:wrap}
+    .stat{
+      background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.25);
+      padding:10px 14px; border-radius:12px; backdrop-filter: blur(6px);
+      font-weight:600; display:flex; align-items:center; gap:8px;
+    }
+    .pill{display:inline-flex; align-items:center; gap:8px; font-weight:700}
+    .content{padding:28px}
+    .section{background:var(--section-bg); border:1px solid var(--border); border-left:5px solid var(--primary); border-radius:14px; padding:22px; margin:0 0 22px}
+    .section h2{margin:0 0 12px; font-size:20px}
+    .cell-list{display:flex; flex-wrap:wrap; gap:8px; max-height:180px; overflow:auto; padding:10px; background:#fff0; border-radius:10px}
+    .chip{display:inline-flex; align-items:center; gap:8px; background:var(--chip-bg); color:var(--chip-fg); padding:6px 10px; border-radius:999px; font-size:12px; border:1px solid rgba(2,132,199,.25)}
+    .price-box{background:linear-gradient(135deg,#ffe29f 0%,#ffa99f 100%); border-radius:16px; padding:20px; text-align:center; border:1px solid rgba(0,0,0,.05)}
+    .price-box h3{margin:0 0 8px; font-size:clamp(20px,3vw,28px); color:#451a03}
+    .price-box p{margin:0; color:#7c2d12}
 
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            padding: 20px;
-        }
+    .grid{display:grid; gap:18px}
+    @media(min-width:900px){ .grid{grid-template-columns:1.2fr .8fr} }
 
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
+    label{display:block; font-weight:600; color:var(--muted); margin:10px 0 6px}
+    .input, textarea, .dropzone{width:100%; border:2px solid var(--border); background:transparent; color:var(--text); border-radius:12px; padding:12px 14px; font-size:16px; transition:border-color .2s, box-shadow .2s}
+    .input:focus, textarea:focus, .dropzone:focus{outline:none; border-color:var(--primary); box-shadow:0 0 0 4px var(--ring)}
 
-        .header {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            padding: 30px;
-            text-align: center;
-            color: white;
-        }
+    .dropzone{
+      display:flex; align-items:center; justify-content:center; text-align:center; min-height:170px; cursor:pointer; position:relative;
+      border-style:dashed; border-width:2px; background:linear-gradient(180deg, rgba(99,102,241,.06), transparent 40%);
+    }
+    .dropzone.dragover{border-color:var(--primary-2); box-shadow:0 0 0 4px var(--ring)}
+    .dropzone input[type=file]{position:absolute; inset:0; opacity:0; cursor:pointer}
+    .preview{margin-top:12px; display:grid; place-items:center}
+    .preview img{max-width:220px; max-height:220px; border-radius:12px; border:1px solid var(--border)}
+    .preview .filename{margin-top:8px; font-size:12px; color:var(--muted)}
 
-        .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-        }
+    .row{display:grid; gap:14px}
+    @media(min-width:560px){.row{grid-template-columns:1fr 1fr}}
 
-        .selected-info {
-            background: rgba(255, 255, 255, 0.2);
-            padding: 15px;
-            border-radius: 10px;
-            margin-top: 20px;
-        }
+    .actions{display:flex; flex-wrap:wrap; gap:12px; justify-content:center; padding-top:10px; border-top:1px dashed var(--border); margin-top:22px}
+    .btn{border:0; border-radius:12px; padding:14px 18px; font-weight:700; cursor:pointer; transition:transform .15s, box-shadow .2s; display:inline-flex; align-items:center; gap:10px}
+    .btn:disabled{opacity:.6; cursor:not-allowed}
+    .btn:hover{transform:translateY(-1px)}
+    .btn-secondary{background:transparent; border:2px solid var(--border); color:var(--text)}
+    .btn-primary{background:linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%); color:white; box-shadow:0 12px 24px rgba(99,102,241,.25)}
 
-        .content {
-            padding: 40px;
-        }
+    .info, .warn{border-radius:12px; padding:12px 14px; border:1px solid; margin:10px 0}
+    .info{background:rgba(16,185,129,.08); border-color:rgba(16,185,129,.25); color:#065f46}
+    .warn{background:rgba(245,158,11,.08); border-color:rgba(245,158,11,.25); color:#7c2d12}
 
-        .section {
-            margin-bottom: 30px;
-            padding: 25px;
-            background: #f8f9fa;
-            border-radius: 15px;
-            border-left: 5px solid #4facfe;
-        }
+    .switch{display:flex; align-items:center; gap:10px; position:absolute; right:18px; top:18px}
+    .switch input{appearance:none; width:50px; height:28px; background:#cbd5e1; border-radius:999px; position:relative; outline:none; cursor:pointer; transition:background .2s}
+    .switch input:checked{background:#334155}
+    .switch input::after{content:""; position:absolute; top:4px; left:4px; width:20px; height:20px; background:white; border-radius:50%; transition:left .25s}
+    .switch input:checked::after{left:26px}
+    .switch span{font-size:12px; color:#fff; font-weight:700; text-shadow:0 1px 2px rgba(0,0,0,.25)}
 
-        .section h2 {
-            color: #333;
-            margin-bottom: 15px;
-            font-size: 1.5em;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #555;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e1e5e9;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.3s ease;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: #4facfe;
-            box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
-        }
-
-        .file-upload {
-            position: relative;
-            display: inline-block;
-            width: 100%;
-        }
-
-        .file-upload input[type=file] {
-            position: absolute;
-            opacity: 0;
-            width: 100%;
-            height: 100%;
-            cursor: pointer;
-        }
-
-        .file-upload-btn {
-            display: block;
-            padding: 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            text-align: center;
-            font-size: 16px;
-            transition: transform 0.2s ease;
-        }
-
-        .file-upload-btn:hover {
-            transform: translateY(-2px);
-        }
-
-        .preview-container {
-            margin-top: 15px;
-            text-align: center;
-        }
-
-        .logo-preview {
-            max-width: 200px;
-            max-height: 200px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            margin: 10px;
-        }
-
-        .price-info {
-            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            margin: 20px 0;
-        }
-
-        .price-info h3 {
-            color: #d63031;
-            font-size: 1.8em;
-            margin-bottom: 10px;
-        }
-
-        .cell-list {
-            background: #fff;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 15px;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        .cell-item {
-            display: inline-block;
-            background: #e3f2fd;
-            color: #1976d2;
-            padding: 5px 10px;
-            border-radius: 15px;
-            margin: 2px;
-            font-size: 12px;
-        }
-
-        .btn {
-            padding: 15px 30px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: inline-block;
-            text-align: center;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-        }
-
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-            margin-right: 10px;
-        }
-
-        .btn-secondary:hover {
-            background: #5a6268;
-        }
-
-        .button-container {
-            text-align: center;
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 2px solid #eee;
-        }
-
-        .info-box {
-            background: #e8f5e8;
-            border: 1px solid #c3e6c3;
-            color: #2d5a2d;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 15px 0;
-        }
-
-        .warning-box {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            color: #856404;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 15px 0;
-        }
-    </style>
+    .toast{position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:#111827; color:white; padding:12px 16px; border-radius:12px; box-shadow:0 10px 20px rgba(0,0,0,.25); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:50}
+    .toast.show{opacity:1; transform:translate(-50%, -4px)}
+    .spinner{width:16px; height:16px; border:3px solid rgba(255,255,255,.4); border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🎯 Satın Alma İşlemi</h1>
-            <div class="selected-info">
-                <h3>📍 Seçilen Hücre Sayısı: <span id="cellCount">0</span></h3>
-                <p>Seçtiğiniz hücrelere logo yükleyebilir ve satın alma işlemini tamamlayabilirsiniz</p>
-            </div>
-        </div>
-
-        <div class="content">
-            <!-- Hücre Bilgileri -->
-            <div class="section">
-                <h2>📋 Seçilen Hücreler</h2>
-                <div id="cellList" class="cell-list">
-                    <!-- Hücreler buraya dinamik olarak eklenecek -->
-                </div>
-            </div>
-
-            <!-- Fiyat Bilgisi -->
-            <div class="price-info">
-                <h3>💰 Toplam Fiyat: <span id="totalPrice">0</span> TL</h3>
-                <p>Hücre başına 10 TL</p>
-            </div>
-
-            <!-- Logo Yükleme -->
-            <div class="section">
-                <h2>🎨 Logo Yükleme</h2>
-                <div class="info-box">
-                    <strong>ℹ️ Bilgi:</strong> Yüklediğiniz logo tüm seçilen hücrelerde görüntülenecektir. 
-                    Desteklenen formatlar: JPG, PNG, SVG (Max 2MB)
-                </div>
-                
-                <div class="form-group">
-                    <label for="logoFile">Logo Dosyası Seçin:</label>
-                    <div class="file-upload">
-                        <input type="file" id="logoFile" accept="image/*" />
-                        <div class="file-upload-btn">
-                            📁 Logo Dosyası Seç
-                        </div>
-                    </div>
-                </div>
-
-                <div class="preview-container" id="previewContainer" style="display: none;">
-                    <p><strong>Logo Önizleme:</strong></p>
-                    <img id="logoPreview" class="logo-preview" />
-                </div>
-            </div>
-
-            <!-- İletişim Bilgileri -->
-            <div class="section">
-                <h2>📧 İletişim Bilgileri</h2>
-                <div class="warning-box">
-                    <strong>⚠️ Önemli:</strong> Satın alma işlemi tamamlandıktan sonra logo değişikliği için iletişim bilgilerinizi kullanacağız.
-                </div>
-                
-                <div class="form-group">
-                    <label for="email">E-posta Adresi:</label>
-                    <input type="email" id="email" class="form-control" placeholder="ornek@email.com" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="phone">Telefon Numarası:</label>
-                    <input type="tel" id="phone" class="form-control" placeholder="+90 555 123 45 67">
-                </div>
-
-                <div class="form-group">
-                    <label for="companyName">Şirket/Marka Adı (Opsiyonel):</label>
-                    <input type="text" id="companyName" class="form-control" placeholder="Şirket adınız">
-                </div>
-            </div>
-
-            <!-- Notlar -->
-            <div class="section">
-                <h2>📝 Ek Notlar</h2>
-                <div class="form-group">
-                    <label for="notes">Özel İstekleriniz:</label>
-                    <textarea id="notes" class="form-control" rows="4" placeholder="Logo konumu, özel istek vb. notlarınızı buraya yazabilirsiniz..."></textarea>
-                </div>
-            </div>
-
-            <!-- Butonlar -->
-            <div class="button-container">
-                <a href="/map" class="btn btn-secondary">← Geri Dön</a>
-                <button id="completePurchaseBtn" class="btn btn-primary">🛒 Satın Almayı Tamamla</button>
-            </div>
-        </div>
+  <div class="container">
+    <div class="header">
+      <label class="switch" title="Karanlık mod">
+        <input id="themeToggle" type="checkbox" />
+        <span>Dark</span>
+      </label>
+      <h1>🎯 Satın Alma İşlemi</h1>
+      <p>Seçtiğiniz hücrelere logonuzu yükleyin ve işlemi tamamlayın.</p>
+      <div class="stats">
+        <div class="stat">📍 <span id="cellCount">0</span> hücre</div>
+        <div class="stat">💰 <span id="totalPrice">0</span> TL</div>
+      </div>
     </div>
 
-    <script>
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        
-        // URL'den parametreleri al
-        const urlParams = new URLSearchParams(window.location.search);
-        const cellsParam = urlParams.get('cells');
-        const cellCount = urlParams.get('count');
-        
-        let selectedCells = [];
-        
-        if (cellsParam) {
-            try {
-                selectedCells = JSON.parse(decodeURIComponent(cellsParam));
-            } catch (e) {
-                console.error('Hücre verisi parse edilemedi:', e);
-            }
-        }
+    <div class="content">
+      <div class="grid">
+        <section class="section">
+          <h2>📋 Seçilen Hücreler</h2>
+          <div id="cellList" class="cell-list" aria-live="polite"></div>
+        </section>
 
-        // Sayfa yüklendiğinde hücre bilgilerini göster
-        document.addEventListener('DOMContentLoaded', () => {
-            updateCellInfo();
-            setupEventListeners();
+        <section class="section">
+          <h2>💰 Fiyat Özeti</h2>
+          <div class="price-box">
+            <h3>Toplam: <span id="priceLarge">0</span> TL</h3>
+            <p>Hücre başına <strong>10 TL</strong></p>
+          </div>
+        </section>
+      </div>
+
+      <section class="section">
+        <h2>🎨 Logo Yükleme</h2>
+        <div class="info"><strong>İpucu:</strong> Tek bir logo tüm seçili hücrelerde görünecek. Desteklenen formatlar: JPG, PNG, SVG (Maks. 2MB)</div>
+        <label for="logoInput">Logo Dosyası</label>
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Logo yükleme alanı">
+          <input id="logoInput" type="file" accept="image/*" aria-label="Dosya seç" />
+          <div>
+            <div style="font-weight:700">Dosyayı buraya sürükleyip bırakın</div>
+            <div style="font-size:13px; color:var(--muted); margin-top:6px">ya da tıklayarak seçin</div>
+          </div>
+        </div>
+        <div id="preview" class="preview" hidden>
+          <img id="logoPreview" alt="Logo önizleme" />
+          <div class="filename" id="fileName"></div>
+          <button id="removeLogo" class="btn btn-secondary" type="button">Kaldır</button>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>📧 İletişim Bilgileri</h2>
+        <div class="warn"><strong>Önemli:</strong> Satın alma sonrası logo değişiklikleri için bu bilgileri kullanacağız.</div>
+        <div class="row">
+          <div>
+            <label for="email">E‑posta</label>
+            <input id="email" class="input" type="email" placeholder="ornek@email.com" required />
+          </div>
+          <div>
+            <label for="phone">Telefon</label>
+            <input id="phone" class="input" type="tel" placeholder="+90 555 123 45 67" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="company">Şirket/Marka (Opsiyonel)</label>
+            <input id="company" class="input" type="text" placeholder="Şirket adınız" />
+          </div>
+          <div>
+            <label for="notes">Notlar</label>
+            <textarea id="notes" rows="1" placeholder="Logo konumu, özel istek vb."></textarea>
+          </div>
+        </div>
+      </section>
+
+      <div class="actions">
+        <a class="btn btn-secondary" href="/map">← Geri Dön</a>
+        <button id="buyBtn" class="btn btn-primary" type="button">
+          <span class="btn-text">🛒 Satın Almayı Tamamla</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+    // ——— Utils
+    const TL = new Intl.NumberFormat('tr-TR');
+    const qs = (s,p=document)=>p.querySelector(s);
+    const qsa = (s,p=document)=>[...p.querySelectorAll(s)];
+    const toast = (msg)=>{const t=qs('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 2200)}
+    
+    const setLoading = (is)=>{
+      const btn = qs('#buyBtn');
+      if(is){
+        btn.disabled = true;
+        if(!qs('.spinner', btn)){
+          const sp = document.createElement('span'); sp.className='spinner';
+          btn.prepend(sp);
+        }
+      }else{
+        btn.disabled = false;
+        const sp = qs('.spinner', btn); sp && sp.remove();
+      }
+    }
+
+    // ——— Theme (sessionStorage kullanıyoruz)
+    const themeToggle = qs('#themeToggle');
+    const savedTheme = sessionStorage.getItem('purchase-theme') || 'light';
+    if(savedTheme === 'dark'){ 
+      document.documentElement.setAttribute('data-theme','dark'); 
+      themeToggle.checked = true; 
+    }
+    themeToggle.addEventListener('change',()=>{
+      const mode = themeToggle.checked ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', mode);
+      sessionStorage.setItem('purchase-theme', mode);
+    });
+
+    // ——— Selected cells from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const cellsParam = urlParams.get('cells');
+    let selectedCells = [];
+    if(cellsParam){
+      try{ 
+        selectedCells = JSON.parse(decodeURIComponent(cellsParam)); 
+        console.log('📍 Seçili hücreler:', selectedCells);
+      }
+      catch(e){ 
+        console.error('❌ Hücre verisi parse edilemedi', e); 
+        toast('Hücre verisi okunamadı.'); 
+      }
+    }
+
+    // Eğer URL'den hücre gelmezse, test için örnek hücreler ekleyelim
+    if(selectedCells.length === 0) {
+      console.warn('⚠️ URL\'den hücre verisi alınamadı, örnek hücreler ekleniyor');
+      selectedCells = ['1,1', '1,2', '2,1']; // Test için
+    }
+
+    const cellCountEl = qs('#cellCount');
+    const totalPriceEl = qs('#totalPrice');
+    const priceLarge = qs('#priceLarge');
+    const cellList = qs('#cellList');
+
+    function renderCells(){
+      const count = selectedCells.length;
+      cellCountEl.textContent = count;
+      const price = count * 10;
+      totalPriceEl.textContent = TL.format(price);
+      priceLarge.textContent = TL.format(price);
+      cellList.innerHTML = '';
+      selectedCells.forEach(c => {
+        const el = document.createElement('span');
+        el.className = 'chip';
+        el.textContent = `Hücre ${c}`;
+        cellList.appendChild(el);
+      });
+    }
+
+    // ——— File upload (click + drag & drop + paste)
+    const dropzone = qs('#dropzone');
+    const fileInput = qs('#logoInput');
+    const preview = qs('#preview');
+    const img = qs('#logoPreview');
+    const fileName = qs('#fileName');
+    const removeBtn = qs('#removeLogo');
+    let currentFile = null;
+
+    const validFile = (f)=>{
+      if(!f) return false;
+      if(!/^image\//.test(f.type)) { 
+        toast('❌ Sadece görsel dosyası yükleyin.'); 
+        return false; 
+      }
+      if(f.size > 2*1024*1024){ 
+        toast('❌ Dosya 2MB sınırını aşıyor.'); 
+        return false; 
+      }
+      return true;
+    }
+
+    const showPreview = (f)=>{
+      const reader = new FileReader();
+      reader.onload = e => { 
+        img.src = e.target.result; 
+        preview.hidden = false; 
+        fileName.textContent = f.name; 
+        console.log('✅ Logo önizlemesi gösteriliyor:', f.name);
+      };
+      reader.readAsDataURL(f);
+    }
+
+    const clearFile = ()=>{ 
+      currentFile=null; 
+      fileInput.value=''; 
+      preview.hidden = true; 
+      img.removeAttribute('src'); 
+      fileName.textContent=''; 
+      console.log('🗑️ Logo temizlendi');
+    }
+
+    dropzone.addEventListener('dragover', e=>{ e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', e=>{
+      e.preventDefault(); 
+      dropzone.classList.remove('dragover');
+      const f = e.dataTransfer.files?.[0]; 
+      if(validFile(f)){ 
+        currentFile=f; 
+        showPreview(f); 
+        toast('✅ Dosya yüklendi!');
+      }
+    });
+    fileInput.addEventListener('change', e=>{
+      const f = e.target.files?.[0]; 
+      if(validFile(f)){ 
+        currentFile=f; 
+        showPreview(f); 
+        toast('✅ Dosya seçildi!');
+      }
+    });
+    document.addEventListener('paste', e=>{
+      const f = [...(e.clipboardData?.files||[])][0]; 
+      if(validFile(f)){ 
+        currentFile=f; 
+        showPreview(f); 
+        toast('✅ Panodan görsel eklendi'); 
+      }
+    });
+    removeBtn.addEventListener('click', clearFile);
+
+    // ——— Purchase
+    qs('#buyBtn').addEventListener('click', async ()=>{
+      console.log('🛒 Satın alma işlemi başlatılıyor...');
+      
+      const email = qs('#email').value.trim();
+      const phone = qs('#phone').value.trim();
+      const company = qs('#company').value.trim();
+      const notes = qs('#notes').value.trim();
+
+      // Validasyon
+      if(!email){ 
+        toast('❌ Lütfen e-posta girin.'); 
+        qs('#email').focus(); 
+        return; 
+      }
+      
+      // Basit e-posta kontrolü
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ 
+        toast('❌ Geçerli bir e-posta girin.'); 
+        qs('#email').focus(); 
+        return; 
+      }
+      
+      if(selectedCells.length === 0){ 
+        toast('❌ Seçili hücre bulunamadı.'); 
+        return; 
+      }
+
+      // Form data hazırlama
+      const form = new FormData();
+      form.append('cells', JSON.stringify(selectedCells));
+      form.append('email', email);
+      form.append('phone', phone);
+      form.append('company_name', company);
+      form.append('notes', notes);
+      
+      if(currentFile) {
+        form.append('logo', currentFile);
+        console.log('📷 Logo ekleniyor:', currentFile.name, currentFile.size, 'bytes');
+      } else {
+        console.log('📷 Logo yüklenmemiş');
+      }
+
+      // Debug: Form içeriğini logla
+      console.log('📋 Gönderilen veriler:');
+      for (let [key, value] of form.entries()) {
+        if (value instanceof File) {
+          console.log(`- ${key}: ${value.name} (${value.size} bytes)`);
+        } else {
+          console.log(`- ${key}: ${value}`);
+        }
+      }
+
+      try{
+        setLoading(true);
+        console.log('🔄 API isteği gönderiliyor...');
+        
+        const res = await fetch('/api/complete-purchase', { 
+          method:'POST', 
+          headers:{ 
+            'X-CSRFToken': csrfToken 
+          }, 
+          body: form 
         });
-
-        function updateCellInfo() {
-            const cellCountEl = document.getElementById('cellCount');
-            const cellListEl = document.getElementById('cellList');
-            const totalPriceEl = document.getElementById('totalPrice');
-            
-            const count = selectedCells.length;
-            cellCountEl.textContent = count;
-            totalPriceEl.textContent = count * 10;
-            
-            // Hücreleri listele
-            cellListEl.innerHTML = '';
-            selectedCells.forEach(cell => {
-                const cellItem = document.createElement('span');
-                cellItem.className = 'cell-item';
-                cellItem.textContent = `Hücre ${cell}`;
-                cellListEl.appendChild(cellItem);
-            });
+        
+        console.log('📡 API yanıtı alındı:', res.status, res.statusText);
+        
+        let data;
+        try {
+          data = await res.json();
+          console.log('📄 API verisi:', data);
+        } catch(jsonErr) {
+          console.error('❌ JSON parse hatası:', jsonErr);
+          data = { error: 'Sunucudan beklenmeyen yanıt' };
         }
-
-        function setupEventListeners() {
-            // Logo dosyası seçimi
-            const logoFile = document.getElementById('logoFile');
-            const previewContainer = document.getElementById('previewContainer');
-            const logoPreview = document.getElementById('logoPreview');
-            
-            logoFile.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    // Dosya boyutu kontrolü (2MB)
-                    if (file.size > 2 * 1024 * 1024) {
-                        alert('Dosya boyutu 2MB\'dan büyük olamaz!');
-                        return;
-                    }
-                    
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        logoPreview.src = e.target.result;
-                        previewContainer.style.display = 'block';
-                    };
-                    reader.readAsDataURL(file);
-                }
-            });
-
-            // Satın alma butonu
-            const completePurchaseBtn = document.getElementById('completePurchaseBtn');
-            completePurchaseBtn.addEventListener('click', handlePurchase);
+        
+        if(res.ok && data.status==='success'){
+          console.log('🎉 Satın alma başarılı!');
+          toast('🎉 Satın alma başarılı! Yönlendiriliyorsunuz...');
+          setTimeout(()=>{ 
+            window.location.href = '/map?purchase=success'; 
+          }, 1500);
+        }else{
+          console.error('❌ Satın alma hatası:', data);
+          const errorMsg = data.error || data.message || 'İşlem tamamlanamadı';
+          toast('❌ Hata: ' + errorMsg);
+          
+          // Eğer bazı hücreler zaten alınmışsa, bunları göster
+          if(data.taken && Array.isArray(data.taken)) {
+            console.warn('⚠️ Zaten alınmış hücreler:', data.taken);
+            toast(`❌ Bu hücreler zaten alınmış: ${data.taken.join(', ')}`);
+          }
         }
+      }catch(err){
+        console.error('❌ Network hatası:', err);
+        toast('❌ Sunucuya erişilemedi. Lütfen tekrar deneyin.');
+      }finally{ 
+        setLoading(false); 
+      }
+    });
 
-        async function handlePurchase() {
-            const email = document.getElementById('email').value;
-            const phone = document.getElementById('phone').value;
-            const companyName = document.getElementById('companyName').value;
-            const notes = document.getElementById('notes').value;
-            const logoFile = document.getElementById('logoFile').files[0];
-            
-            // Validasyon
-            if (!email) {
-                alert('Lütfen e-posta adresinizi girin.');
-                return;
-            }
-            
-            if (selectedCells.length === 0) {
-                alert('Seçilen hücre bulunamadı.');
-                return;
-            }
-
-            // FormData oluştur (dosya yüklemesi için)
-            const formData = new FormData();
-            formData.append('cells', JSON.stringify(selectedCells));
-            formData.append('email', email);
-            formData.append('phone', phone || '');
-            formData.append('company_name', companyName || '');
-            formData.append('notes', notes || '');
-            
-            if (logoFile) {
-                formData.append('logo', logoFile);
-            }
-
-            try {
-                const response = await fetch('/api/complete-purchase', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: formData
-                });
-
-                const result = await response.json();
-                
-                if (response.ok && result.status === 'success') {
-                    alert('🎉 Satın alma işlemi başarıyla tamamlandı!\n' + result.message);
-                    // Başarılı satın alma sonrası yönlendirme
-                    window.location.href = '/map?purchase=success';
-                } else {
-                    alert('❌ Satın alma işlemi başarısız:\n' + (result.error || 'Bilinmeyen hata'));
-                }
-            } catch (error) {
-                alert('❌ Sunucuya erişilemedi: ' + error.message);
-                console.error('Satın alma hatası:', error);
-            }
-        }
-    </script>
+    // İlk render
+    renderCells();
+    console.log('✅ Sayfa hazır. Seçili hücre sayısı:', selectedCells.length);
+  </script>
 </body>
 </html>
