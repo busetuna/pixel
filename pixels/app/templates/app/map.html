@@ -18,6 +18,7 @@
     #mapImage {
       -webkit-mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
       mask-image: radial-gradient(circle at center, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+      
     }
     
     #container {
@@ -181,28 +182,21 @@
 
     let purchasedCells = new Set();
     let selectedCells = new Set();
-    // Canvas'ta "background-size: cover" mantığı
-function drawImageCover(ctx, img, dx, dy, dWidth, dHeight) {
-  const ir = img.naturalWidth / img.naturalHeight; // image ratio
-  const dr = dWidth / dHeight;                      // dest rect ratio
-  let sx, sy, sWidth, sHeight;
 
-  if (dr > ir) {
-    // hedef daha yatay -> en küçük ortak yükseklikten kırp
-    sWidth = img.naturalWidth;
-    sHeight = sWidth / dr;
-    sx = 0;
-    sy = (img.naturalHeight - sHeight) / 2;
-  } else {
-    // hedef daha dikey -> en küçük ortak genişlikten kırp
-    sHeight = img.naturalHeight;
-    sWidth = sHeight * dr;
-    sy = 0;
-    sx = (img.naturalWidth - sWidth) / 2;
-  }
+    function getVisibleSize() {
+  return {
+    visibleWidth:  img.naturalWidth * imageScale,
+    visibleHeight: img.naturalHeight * imageScale
+  };
+}
 
-  drawImageCover(ctx, imgLogo, screenX, screenY, screenW, screenH);
-
+function cellToScreenRect(col, row) {
+  const { visibleWidth, visibleHeight } = getVisibleSize();
+  const cellW = visibleWidth / cols;
+  const cellH = visibleHeight / rows;
+  const x = imageOffsetX + col * cellW;
+  const y = imageOffsetY + row * cellH;
+  return { x, y, w: cellW, h: cellH };
 }
 
     // Fonksiyonları en başta tanımla
@@ -274,8 +268,8 @@ function hideTooltip(){ tooltipEl.hidden = true; }
       }
     }
 
-   async function renderPurchasedLogos(ctx, cellSize = 20) {
-  logoRegions = []; 
+async function renderPurchasedLogos(ctx) {
+  logoRegions = [];
 
   const response = await fetch("/api/purchased-cells");
   const data = await response.json();
@@ -290,37 +284,44 @@ function hideTooltip(){ tooltipEl.hidden = true; }
     logoGroups[key].cells.push(item.cell);
   }
 
+  const { visibleWidth, visibleHeight } = getVisibleSize();
+  const cellW = visibleWidth / cols;
+  const cellH = visibleHeight / rows;
+
   for (const [logoUrl, group] of Object.entries(logoGroups)) {
     const cells = group.cells;
-    const meta  = group.meta; // owner, company_name, notes, purchased_at vs.
+    const meta  = group.meta;
 
+    // Ekran koordinatlarına taşı
     const coords = cells.map(c => {
       const [x, y] = c.split(',').map(Number);
-      return { x, y };
+      return { col: x, row: y, ...cellToScreenRect(x, y) };
     });
     if (!coords.length) continue;
 
-    // kapsayan dikdörtgen
+    // Kapsayan dikdörtgen
     const minX = Math.min(...coords.map(c => c.x));
-    const maxX = Math.max(...coords.map(c => c.x));
+    const maxX = Math.max(...coords.map(c => c.x + c.w));
     const minY = Math.min(...coords.map(c => c.y));
-    const maxY = Math.max(...coords.map(c => c.y));
+    const maxY = Math.max(...coords.map(c => c.y + c.h));
+    const screenX = minX, screenY = minY, screenW = maxX - minX, screenH = maxY - minY;
 
-    const visibleWidth  = img.naturalWidth * imageScale;
-    const visibleHeight = img.naturalHeight * imageScale;
-    const cellW = visibleWidth / cols;
-    const cellH = visibleHeight / rows;
+    // ✨ Clip alanı: hücrelerin birleşimi
+    const clipPath = new Path2D();
+    for (const c of coords) {
+      // ekstra güvenlik: sadece kara olan hücreleri ekle
+      if (isLandCell(c.col, c.row)) {
+        clipPath.rect(c.x, c.y, c.w, c.h);
+      }
+    }
 
-    const screenX = imageOffsetX + minX * cellW;
-    const screenY = imageOffsetY + minY * cellH;
-    const screenW = (maxX - minX + 1) * cellW;
-    const screenH = (maxY - minY + 1) * cellH;
-
-    // Bölgeyi kaydet (tooltip için)
+    // Tooltip için bölgeyi kaydet (kapsayan dikdörtgen yeterli)
     logoRegions.push({
       x: screenX, y: screenY, w: screenW, h: screenH,
       meta: {
-        logo_url: logoUrl.startsWith("/logos/") ? logoUrl.replace("/logos/", "/media/logos/") : logoUrl,
+        logo_url: logoUrl.startsWith("/logos/")
+          ? logoUrl.replace("/logos/", "/media/logos/")
+          : logoUrl,
         owner: meta.owner,
         company_name: meta.company_name,
         notes: meta.notes,
@@ -328,14 +329,22 @@ function hideTooltip(){ tooltipEl.hidden = true; }
       }
     });
 
-    // Logoyu çiz
-    const imgLogo = new Image();
-    imgLogo.src = logoRegions[logoRegions.length-1].meta.logo_url;
-    imgLogo.onload = () => {
-      ctx.globalAlpha = 0.9;
-      ctx.drawImage(imgLogo, screenX, screenY, screenW, screenH);
-      ctx.globalAlpha = 1.0;
-    };
+    // Logoyu sadece clip alanında göster
+    const urlFixed = logoRegions[logoRegions.length - 1].meta.logo_url;
+    await new Promise(resolve => {
+      const imgLogo = new Image();
+      imgLogo.src = urlFixed;
+      imgLogo.onload = () => {
+        ctx.save();
+        ctx.clip(clipPath);           // 🧩 sadece kara/seçili hücreler
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(imgLogo, screenX, screenY, screenW, screenH);
+        ctx.globalAlpha = 1.0;
+        ctx.restore();
+        resolve();
+      };
+      imgLogo.onerror = resolve; // hata olsa bile çizimi bloklamasın
+    });
   }
 }
 
@@ -383,22 +392,37 @@ function hideTooltip(){ tooltipEl.hidden = true; }
       console.log("🗑️ Tüm seçimler temizlendi");
       draw();
     }
-
 function resize() {
-  canvas.width  = window.innerWidth;
-  canvas.height = window.innerHeight;
+  const DPR = Math.max(1, window.devicePixelRatio || 1);
+
+  // CSS boyutu
+  const cssW = window.innerWidth;
+  const cssH = window.innerHeight;
+
+  // Canvas gerçek piksel boyutu (DPR ile)
+  canvas.width  = Math.round(cssW * DPR);
+  canvas.height = Math.round(cssH * DPR);
+
+  // CSS boyutunu koru ki layout bozulmasın
+  canvas.style.width  = cssW + "px";
+  canvas.style.height = cssH + "px";
+
+  // Tüm çizimleri CSS piksel koordinatıyla yapabilelim:
+  const ctx2d = ctx; // sadece okunaklılık
+  ctx2d.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  // Smoothing kalite
+  ctx2d.imageSmoothingEnabled = true;
+  ctx2d.imageSmoothingQuality = "high";
 
   if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-    // COVER: kapsayacak ölçek (kırpma olabilir)
-    const scaleW = canvas.width  / img.naturalWidth;
-    const scaleH = canvas.height / img.naturalHeight;
-    imageScale   = Math.max(scaleW, scaleH);
+    const scaleW = cssW / img.naturalWidth;
+    const scaleH = cssH / img.naturalHeight;
+    imageScale   = Math.max(scaleW, scaleH); // COVER
 
-    // COVER’da ofsetler (merkezde konumlandırma; negatif olabilir)
-    imageOffsetX = (canvas.width  - img.naturalWidth  * imageScale) / 2;
-    imageOffsetY = (canvas.height - img.naturalHeight * imageScale) / 2;
+    imageOffsetX = (cssW - img.naturalWidth  * imageScale) / 2;
+    imageOffsetY = (cssH - img.naturalHeight * imageScale) / 2;
 
-    // Deniz/kara ayrımı için kaynak görseli bir kez hazırla
     if (!imageDataCanvas) {
       imageDataCanvas = document.createElement("canvas");
       imageDataCanvas.width  = img.naturalWidth;
@@ -410,10 +434,11 @@ function resize() {
   }
 
   debugEl.textContent =
-    `Harita: ${img.naturalWidth}x${img.naturalHeight} | Canvas: ${canvas.width}x${canvas.height} | Scale(COVER): ${imageScale.toFixed(3)} | off=(${imageOffsetX.toFixed(1)}, ${imageOffsetY.toFixed(1)})`;
+    `Harita: ${img.naturalWidth}x${img.naturalHeight} | Canvas(CSS): ${cssW}x${cssH} | DPR: ${Math.round(DPR*100)/100} | Scale: ${imageScale.toFixed(3)} | off=(${imageOffsetX.toFixed(1)}, ${imageOffsetY.toFixed(1)})`;
 
   draw();
 }
+
 
 
     function draw() {
@@ -706,6 +731,7 @@ if (hovered) {
             "Content-Type": "application/json",
             "X-CSRFToken": csrfToken
           },
+          credentials: "same-origin",
           body: JSON.stringify({ cells: cellsArray })
         });
 
